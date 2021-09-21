@@ -1,6 +1,36 @@
+use sha2::{Digest, Sha256};
 use anyhow::Result;
-use capsule::wrapper;
-use capsule::capsule;
+use ::capsule::wrapper;
+use ::capsule::capsule;
+
+#[derive(PartialOrd, Ord, PartialEq, Eq)]
+enum Input {
+    File(String),
+    Tool(String),
+}
+
+struct InputSet {
+    inputs: Vec<Input>,  // We always assume this vector is sorted.
+}
+
+impl InputSet {
+    fn hash(&self) {
+        // Calculate the hash of the input set independently of the order.
+        let mut acc : Sha256 = Sha256::new();
+        for input in &self.inputs {
+            let payload = match input {
+                Input::File(s) => ("File", s),
+                Input::Tool(s) => ("Tool", s),
+            };
+            acc.input(&payload[0], &payload[1]);
+        }
+    }
+}
+
+struct Config {
+    inputs: Vec<String>,
+    outputs: Vec<String>,
+}
 
 fn main() -> Result<()> {
     // Read arguments
@@ -24,4 +54,7 @@ fn main() -> Result<()> {
     //     let caching_backend.store = 
     // } else {
     // }
+    // let config = Config::new("");
+    // let capsule = Capsule::new(
+    Ok(())
 }
