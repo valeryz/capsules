@@ -1,6 +1,6 @@
 # Capsules
 
-Capsules encapsulate small build steps in a reproducible, repeatable and cacheable way.
+Capsules encapsulate large and small build and test steps in a reproducible, isolated and cacheable way.
 
 ## Getting started
 
