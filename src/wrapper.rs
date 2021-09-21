@@ -3,6 +3,7 @@ use std::env;
 use std::ffi::CString;
 use std::ptr;
 use std::io;
+use itertools;
 use anyhow::{anyhow, Result};
 
 static USAGE: &'static str =
@@ -14,8 +15,12 @@ where
 {
     let program_cstring = CString::new(program_name)?;
     let arg_cstrings = args.map(CString::new).collect::<Result<Vec<_>, _>>()?;
-    let mut arg_charptrs: Vec<* const i8> = arg_cstrings.into_iter().map(|arg| arg.as_ptr()).collect();
+
+    println!("{:?}", arg_cstrings);
+    let mut arg_charptrs: Vec<* const libc::c_char> = arg_cstrings.iter().map(|arg| arg.as_ptr()).collect();
     arg_charptrs.push(ptr::null());
+
+    println!("{:?}", arg_charptrs);
 
     unsafe { libc::execvp(program_cstring.as_ptr(), arg_charptrs.as_ptr()) };
     Err(io::Error::last_os_error().into())
@@ -37,7 +42,7 @@ pub fn execute() -> Result<()> {
     }
 
     if let Some(program_name) = args.next() {
-        exec_program(program_name, args)
+        exec_program(program_name.clone(), itertools::chain!([program_name], args))
     } else {
         Err(anyhow!(USAGE.to_string()))
     }
