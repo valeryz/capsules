@@ -1,6 +1,7 @@
 use anyhow::Result;
-use capsules::wrapper;
+use capsule::wrapper;
 
 fn main() -> Result<()> {
-   wrapper::execute()
+    
+    wrapper::execute()
 }
