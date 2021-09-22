@@ -1,38 +1,41 @@
+use anyhow::Result;
+use bytes::Bytes;
 use sha2::{Digest, Sha256};
+use std::ffi::OsString;
+use std::os::unix::ffi::OsStringExt;
 use std::fs::File;
 use std::io::Read;
-use anyhow::Result;
 
 #[derive(PartialOrd, Ord, PartialEq, Eq)]
 pub enum Input {
-    File(String),               // input file
-    Tool(String),               // string uniquely defining the tool version (could be even the hash of its binary).
+    File(OsString), // input file
+    Tool(OsString), // string uniquely defining the tool version (could be even the hash of its binary).
 }
 
 /// Input set is the set of all inputs to the build step.
 pub struct InputSet {
-    pub inputs: Vec<Input>,  // We will always assume this vector is sorted.
+    pub inputs: Vec<Input>, // We will always assume this vector is sorted.
 }
 
 // TODO: should we also add exec bit?
 #[derive(PartialOrd, Ord, PartialEq, Eq)]
 pub struct FileOutput {
-    filename: String,
+    filename: OsString,
     present: bool,
-    contents: String
+    contents: Bytes,
 }
 
 #[derive(PartialOrd, Ord, PartialEq, Eq)]
 pub enum Output {
     File(FileOutput),
-    Stdout(String),
-    Stderr(String),
+    Stdout(OsString),
+    Stderr(OsString),
     Log(FileOutput),
 }
 
 /// Output set is the set of all process outputs.
 pub struct OutputSet {
-    pub outputs: Vec<(Output, bool)> // The bool indicates whether we store this output in the cache.
+    pub outputs: Vec<(Output, bool)>, // The bool indicates whether we store this output in the cache.
 }
 
 /// Returns the hash of the given file.
@@ -40,11 +43,11 @@ pub struct OutputSet {
 /// TODO(valeryz): Cache these in a parent process' memory by the
 /// output of stat(2), except atime, so that we don't have to read
 /// them twice during a single build process.
-fn file_hash(filename: &String) -> Result<String> {
+fn file_hash(filename: &OsString) -> Result<String> {
     const BUFSIZE: usize = 4096;
     let mut acc = Sha256::new();
     let mut f = File::open(filename)?;
-    let mut buf : [u8; BUFSIZE] = [0; BUFSIZE];
+    let mut buf: [u8; BUFSIZE] = [0; BUFSIZE];
     loop {
         let rd = f.read(&mut buf)?;
         if rd == 0 {
@@ -58,33 +61,37 @@ fn file_hash(filename: &String) -> Result<String> {
 impl InputSet {
     pub fn hash(&self) -> Result<String> {
         // Calculate the hash of the input set independently of the order.
-        let mut acc : Sha256 = Sha256::new();
+        let mut acc: Sha256 = Sha256::new();
         for input in &self.inputs {
-            let payload = match input {
-                Input::File(s) => ("File", file_hash(s)?),
-                Input::Tool(s) => ("Tool", s.to_owned()),
+            match input {
+                Input::File(s) => {
+                    acc.update("File");
+                    acc.update(file_hash(s)?)
+                }
+                Input::Tool(s) => {
+                    acc.update("Tool");
+                    acc.update(s.clone().into_vec())
+                }
             };
-            acc.update(&payload.0);
-            acc.update(&payload.1);
         }
         Ok(format!("{:x}", acc.finalize()))
     }
 
     pub fn add_input(&mut self, input: Input) {
         match self.inputs.binary_search(&input) {
-            Ok(_) => {} // element already in vector @ `pos` 
+            Ok(_) => {} // element already in vector @ `pos`
             Err(pos) => self.inputs.insert(pos, input),
         }
     }
 }
 
 struct Config {
-    inputs: Vec<String>,
-    outputs: Vec<String>,
+    inputs: Vec<OsString>,
+    outputs: Vec<OsString>,
 }
 
 struct Configuration {
-    config_file: String,
+    config_file: OsString,
 }
 
 struct CachingBackend {}
@@ -96,17 +103,16 @@ struct Capsule<'a> {
     config: &'a Configuration,
     caching_backend: &'a CachingBackend,
     key: Option<String>,
-    cacheable_bundle: Option<Bundle>
+    cacheable_bundle: Option<Bundle>,
 }
 
 impl<'a> Capsule<'a> {
-    fn new(caching_backend: &'a CachingBackend,
-           config: &'a Configuration) -> Self {
+    fn new(caching_backend: &'a CachingBackend, config: &'a Configuration) -> Self {
         Self {
             config: config,
             caching_backend,
             key: None,
-            cacheable_bundle: None
+            cacheable_bundle: None,
         }
     }
 }
@@ -116,14 +122,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_input_set_1() {
-    }
+    fn test_input_set_1() {}
 
     #[test]
-    fn test_input_set_empty() {
-    }
+    fn test_input_set_empty() {}
 
     #[test]
-    fn test_input_set_different_order() {
-    }
+    fn test_input_set_different_order() {}
 }
