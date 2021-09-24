@@ -5,7 +5,7 @@ use anyhow::{anyhow, Result};
 use nix::unistd::execvp;
 
 static USAGE: &'static str =
-    "Usage: capsule --in=<filename> ... --out=<filename>> -- command [<arguments>]";
+    "Usage: capsule <capsule arguments ...> -- command [<arguments>]";
 
 pub fn exec_program<I>(program_name: String, args: I) -> Result<()>
 where
