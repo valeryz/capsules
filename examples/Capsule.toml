@@ -1,0 +1,11 @@
+# This is an example of a config file that is placed in the current directory
+# in which a the capsule is implanted.
+# 
+[prod-test]
+inputs = [
+       "./prod-test/run-prod-test",
+       "./prod-test/prod-test-data.txt",
+       ]
+outputs = [
+        "test-result.txt"
+        ]

@@ -1,4 +1,10 @@
 use anyhow::Result;
+use capsule::caching::honeycomb;
+use capsule::capsule::Capsule;
+use capsule::config::Config;
+use capsule::wrapper;
+
+
 
 fn main() -> Result<()> {
     // Read arguments
@@ -22,7 +28,8 @@ fn main() -> Result<()> {
     //     let caching_backend.store = 
     // } else {
     // }
-    // let config = Config::new("");
-    // let capsule = Capsule::new(config);
-    Ok(())
+    let config = Config::new()?;
+    let capsule = Capsule::new(&config, Box::new(honeycomb::HoneycombBackend {}));
+    capsule.write_cache()?;
+    wrapper::execute()
 }
