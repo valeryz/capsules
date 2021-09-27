@@ -5,8 +5,6 @@ use toml;
 use serde::Deserialize;
 use std::collections::HashMap;
 
-use crate::caching::honeycomb::HoneycombBackend;
-
 #[derive(Deserialize)]
 pub enum Milestone {
     Placebo,

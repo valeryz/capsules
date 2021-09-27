@@ -2,7 +2,6 @@ use anyhow::Result;
 use bytes::Bytes;
 use sha2::{Digest, Sha256};
 use std::ffi::{OsString, OsStr};
-use std::os::unix::ffi::OsStringExt;
 use std::fs::File;
 use std::io::Read;
 use std::os::unix::prelude::OsStrExt;
@@ -12,8 +11,10 @@ use crate::caching::backend::{CachingBackend, OutputsBundle};
 
 #[derive(PartialOrd, Ord, PartialEq, Eq, Debug)]
 pub enum Input<'a> {
-    File(&'a OsString), // input file
-    Tool(&'a OsString), // string uniquely defining the tool version (could be even the hash of its binary).
+    /// Input file.
+    File(&'a OsString),
+    /// string uniquely defining the tool version (could be even the hash of its binary).    
+    ToolTag(&'a OsString),
 }
 
 /// Input set is the set of all inputs to the build step.
@@ -71,6 +72,13 @@ fn string_hash(s: &OsStr) -> String {
 }
 
 impl<'a> InputSet<'a> {
+
+    /// Returns the HEX string of the hash of the whole input set.
+    ///
+    /// It does this by calculating a SHA256 hash of all SHA256 hashes
+    /// of inputs (being either file or tool tag) sorted by the values
+    /// of the hashes themselves.
+    ///
     pub fn hash(&self) -> Result<String> {
         // Calculate the hash of the input set independently of the order.
         let mut all_hashes = Vec::new();
@@ -79,8 +87,8 @@ impl<'a> InputSet<'a> {
                 Input::File(s) => {
                     all_hashes.push(format!("File{}", file_hash(s)?));
                 }
-                Input::Tool(s) => {
-                    all_hashes.push(format!("Tool{}", string_hash(s)));
+                Input::ToolTag(s) => {
+                    all_hashes.push(format!("ToolTag{}", string_hash(s)));
                 }
             }
         }
@@ -120,7 +128,7 @@ impl<'a> Capsule<'a> {
             capsule.inputs.add_input(Input::File(file));
         }
         for tool_tag in &config.tool_tags {
-            capsule.inputs.add_input(Input::Tool(tool_tag));
+            capsule.inputs.add_input(Input::ToolTag(tool_tag));
         }
         capsule
     }
@@ -144,7 +152,6 @@ impl<'a> Capsule<'a> {
 mod tests {
     use super::*;
     use std::io::Write;
-    use sha2::digest::generic_array::typenum::private::IsLessPrivate;
     use tempfile::NamedTempFile;
 
     const EMPTY_SHA256 : &'static str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
@@ -173,7 +180,7 @@ mod tests {
     fn test_input_set_1() {
         let mut input_set = InputSet::default();
         let tool_tag = OsString::from("some tool_tag");
-        input_set.add_input(Input::Tool(&tool_tag));
+        input_set.add_input(Input::ToolTag(&tool_tag));
         let hash1 = input_set.hash().unwrap();
         assert_ne!(hash1, EMPTY_SHA256);
         let hash2 = input_set.hash().unwrap();
@@ -185,11 +192,11 @@ mod tests {
         let mut input_set1 = InputSet::default();
         let tool_tag1 = OsString::from("some tool_tag");
         let tool_tag2 = OsString::from("another tool_tag");
-        input_set1.add_input(Input::Tool(&tool_tag1));
-        input_set1.add_input(Input::Tool(&tool_tag2));
+        input_set1.add_input(Input::ToolTag(&tool_tag1));
+        input_set1.add_input(Input::ToolTag(&tool_tag2));
         let mut input_set2 = InputSet::default();
-        input_set2.add_input(Input::Tool(&tool_tag2));
-        input_set2.add_input(Input::Tool(&tool_tag1));
+        input_set2.add_input(Input::ToolTag(&tool_tag2));
+        input_set2.add_input(Input::ToolTag(&tool_tag1));
         assert_eq!(input_set1.hash().unwrap(),
                    input_set2.hash().unwrap());
     }
