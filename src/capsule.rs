@@ -87,7 +87,6 @@ impl<'a> InputSet<'a> {
         all_hashes.sort();
         let mut acc: Sha256 = Sha256::new();
         for hash in all_hashes {
-            println!("Hahs {:?}", hash);
             acc.update(hash);
         }
         Ok(format!("{:x}", acc.finalize()))
@@ -211,7 +210,6 @@ mod tests {
                    "f409e4c7ae76997e69556daae6139bee1f02e4f618d3da8deea10bb35b6c0ebd");
         let path2 = OsString::from(file2.path());
         input_set.add_input(Input::File(&path2));
-        println!("{:?}", input_set.inputs);
         assert_eq!(input_set.hash().unwrap(),
                    "a282f3da61a4bc322a8d31da6d30a0e924017962acbef2f6996b81709de8cdc3");
     }
