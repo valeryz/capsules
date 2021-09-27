@@ -1,16 +1,16 @@
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 use clap::{App, Arg};
-use std::{env, ffi::OsString};
-use toml;
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::{env, ffi::OsString};
+use toml;
 
 #[derive(Deserialize)]
 pub enum Milestone {
     Placebo,
     BluePill,
     OragePill,
-    RedPill
+    RedPill,
 }
 
 #[derive(Deserialize)]
@@ -47,7 +47,6 @@ impl Default for Config {
 }
 
 impl Config {
-
     pub fn new() -> Result<Self> {
         let mut config = Self::default();
         if let Ok(home) = std::env::var("HOME") {
@@ -70,44 +69,58 @@ impl Config {
         // Command line.
         let arg_matches = App::new("Capsules")
             .version("1.0")
-            .arg(Arg::new("capsule_id")
-                 .about("The ID of the capsule (usually a target path)")
-                 .short('c')
-                 .long("capsule_id")
-                 .takes_value(true)
-                 .multiple_occurrences(false))
-            .arg(Arg::new("input")
-                 .about("Input file")
-                 .short('i')
-                 .long("input")
-                 .takes_value(true)
-                 .multiple_occurrences(true))
-            .arg(Arg::new("tool")
-                 .about("Tool string (usually with a version)")
-                 .short('t')
-                 .long("tool")
-                 .takes_value(true)
-                 .multiple_occurrences(true))
-            .arg(Arg::new("output")
-                 .about("Output file")
-                 .short('o')
-                 .long("output")
-                 .takes_value(true)
-                 .multiple_occurrences(true))
-            .arg(Arg::new("stdout")
-                 .about("Capture stdout with the cached bundle")
-                 .long("stdout")
-                 .takes_value(false))
-            .arg(Arg::new("stderr")
-                 .about("Capture stderr with the cached bundle")
-                 .long("stderr")
-                 .takes_value(false));
-        let match_sources = 
-             [arg_matches.clone().get_matches(),
-                                                     arg_matches.clone().get_matches_from(
-                            env::var("CAPSULE_ARGS")
-                                .unwrap_or_default()
-                                .split_whitespace())];
+            .arg(
+                Arg::new("capsule_id")
+                    .about("The ID of the capsule (usually a target path)")
+                    .short('c')
+                    .long("capsule_id")
+                    .takes_value(true)
+                    .multiple_occurrences(false),
+            )
+            .arg(
+                Arg::new("input")
+                    .about("Input file")
+                    .short('i')
+                    .long("input")
+                    .takes_value(true)
+                    .multiple_occurrences(true),
+            )
+            .arg(
+                Arg::new("tool")
+                    .about("Tool string (usually with a version)")
+                    .short('t')
+                    .long("tool")
+                    .takes_value(true)
+                    .multiple_occurrences(true),
+            )
+            .arg(
+                Arg::new("output")
+                    .about("Output file")
+                    .short('o')
+                    .long("output")
+                    .takes_value(true)
+                    .multiple_occurrences(true),
+            )
+            .arg(
+                Arg::new("stdout")
+                    .about("Capture stdout with the cached bundle")
+                    .long("stdout")
+                    .takes_value(false),
+            )
+            .arg(
+                Arg::new("stderr")
+                    .about("Capture stderr with the cached bundle")
+                    .long("stderr")
+                    .takes_value(false),
+            );
+        let match_sources = [
+            arg_matches.clone().get_matches(),
+            arg_matches.clone().get_matches_from(
+                env::var("CAPSULE_ARGS")
+                    .unwrap_or_default()
+                    .split_whitespace(),
+            ),
+        ];
 
         for matches in &match_sources {
             if let Some(capsule_id) = matches.value_of_os("capsule_id") {
@@ -124,7 +137,7 @@ impl Config {
                 bail!("Cannot determine capsule_id");
             }
         }
- 
+
         for matches in match_sources {
             if let Some(inputs) = matches.values_of_os("input") {
                 config.input_files.extend(inputs.map(|x| x.to_owned()));
@@ -144,4 +157,20 @@ impl Config {
         }
         Ok(config)
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_command_line() {}
+
+    fn test_toml() {}
+
+    fn test_toml_defaults() {}
+
+    fn test_comamnd_line_precedence() {}
+
+    fn test_required_canister_id() {}
 }
