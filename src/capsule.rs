@@ -1,13 +1,13 @@
 use anyhow::Result;
 use bytes::Bytes;
 use sha2::{Digest, Sha256};
-use std::ffi::{OsString, OsStr};
+use std::ffi::{OsStr, OsString};
 use std::fs::File;
 use std::io::Read;
 use std::os::unix::prelude::OsStrExt;
 
-use crate::config::Config;
 use crate::caching::backend::{CachingBackend, OutputsBundle};
+use crate::config::Config;
 
 #[derive(PartialOrd, Ord, PartialEq, Eq, Debug)]
 pub enum Input<'a> {
@@ -19,13 +19,13 @@ pub enum Input<'a> {
 
 /// Input set is the set of all inputs to the build step.
 #[derive(Default, Debug)]
-pub struct InputSet <'a> {
-    pub inputs: Vec<Input<'a>>, // We will always assume this vector is sorted.
+pub struct InputSet<'a> {
+    pub inputs: Vec<Input<'a>>,
 }
 
 // TODO: should we also add exec bit?
 #[derive(PartialOrd, Ord, PartialEq, Eq)]
-pub struct FileOutput <'a> {
+pub struct FileOutput<'a> {
     filename: &'a OsString,
     present: bool,
     contents: Bytes,
@@ -41,7 +41,7 @@ pub enum Output<'a> {
 
 /// Output set is the set of all process outputs.
 #[derive(Default)]
-pub struct OutputSet <'a> {
+pub struct OutputSet<'a> {
     pub outputs: Vec<(Output<'a>, bool)>, // The bool indicates whether we store this output in the cache.
 }
 
@@ -72,7 +72,6 @@ fn string_hash(s: &OsStr) -> String {
 }
 
 impl<'a> InputSet<'a> {
-
     /// Returns the HEX string of the hash of the whole input set.
     ///
     /// It does this by calculating a SHA256 hash of all SHA256 hashes
@@ -101,10 +100,7 @@ impl<'a> InputSet<'a> {
     }
 
     pub fn add_input(&mut self, input: Input<'a>) {
-        match self.inputs.binary_search(&input) {
-            Ok(_) => {} // element already in vector @ `pos`
-            Err(pos) => self.inputs.insert(pos, input),
-        }
+        self.inputs.push(input)
     }
 }
 
@@ -140,11 +136,15 @@ impl<'a> Capsule<'a> {
     pub fn write_cache(&self) -> Result<()> {
         // Outputs bundle is ununsed in Placebo.
         let bundle = OutputsBundle {};
-        self.caching_backend.write(self.config.capsule_id.as_ref().expect("capsule_id must be specified"),
-                                   &OsString::from(self.hash()?),
-                                   &OsString::from(""),
-                                   &bundle)
-
+        self.caching_backend.write(
+            self.config
+                .capsule_id
+                .as_ref()
+                .expect("capsule_id must be specified"),
+            &OsString::from(self.hash()?),
+            &OsString::from(""),
+            &bundle,
+        )
     }
 }
 
@@ -154,7 +154,8 @@ mod tests {
     use std::io::Write;
     use tempfile::NamedTempFile;
 
-    const EMPTY_SHA256 : &'static str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+    const EMPTY_SHA256: &'static str =
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
     #[test]
     fn file_hash_test() -> Result<()> {
@@ -197,8 +198,7 @@ mod tests {
         let mut input_set2 = InputSet::default();
         input_set2.add_input(Input::ToolTag(&tool_tag2));
         input_set2.add_input(Input::ToolTag(&tool_tag1));
-        assert_eq!(input_set1.hash().unwrap(),
-                   input_set2.hash().unwrap());
+        assert_eq!(input_set1.hash().unwrap(), input_set2.hash().unwrap());
     }
 
     #[test]
@@ -213,11 +213,15 @@ mod tests {
         let path1 = OsString::from(file1.path());
         input_set.add_input(Input::File(&path1));
         // These hashes were obtained by manual manipulation files and `openssl sha256`
-        assert_eq!(input_set.hash().unwrap(),
-                   "f409e4c7ae76997e69556daae6139bee1f02e4f618d3da8deea10bb35b6c0ebd");
+        assert_eq!(
+            input_set.hash().unwrap(),
+            "f409e4c7ae76997e69556daae6139bee1f02e4f618d3da8deea10bb35b6c0ebd"
+        );
         let path2 = OsString::from(file2.path());
         input_set.add_input(Input::File(&path2));
-        assert_eq!(input_set.hash().unwrap(),
-                   "a282f3da61a4bc322a8d31da6d30a0e924017962acbef2f6996b81709de8cdc3");
+        assert_eq!(
+            input_set.hash().unwrap(),
+            "a282f3da61a4bc322a8d31da6d30a0e924017962acbef2f6996b81709de8cdc3"
+        );
     }
 }
