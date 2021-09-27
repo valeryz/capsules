@@ -35,5 +35,5 @@ fn main() -> Result<()> {
     };
     let capsule = Capsule::new(&config, backend);
     capsule.write_cache()?;
-    wrapper::execute()
+    wrapper::execute(&config.command_to_run)
 }

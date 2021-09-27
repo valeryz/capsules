@@ -30,6 +30,7 @@ pub struct Config {
     pub output_files: Vec<OsString>,
     pub capture_stdout: bool,
     pub capture_stderr: bool,
+    pub command_to_run: Vec<OsString>,
 }
 
 impl Default for Config {
@@ -43,6 +44,7 @@ impl Default for Config {
             output_files: vec![],
             capture_stdout: false,
             capture_stderr: false,
+            command_to_run: vec![],
         }
     }
 }
@@ -156,6 +158,9 @@ impl Config {
             }
             if matches.is_present("stderr") {
                 config.capture_stderr = true;
+            }
+            if let Some(command) = matches.values_of_os("command_to_run") {
+                config.command_to_run = command.map(|x| x.to_os_string()).collect();
             }
         }
         Ok(config)
