@@ -5,6 +5,8 @@ use toml;
 use serde::Deserialize;
 use std::collections::HashMap;
 
+use crate::caching::honeycomb::HoneycombBackend;
+
 #[derive(Deserialize)]
 pub enum Milestone {
     Placebo,
@@ -14,8 +16,15 @@ pub enum Milestone {
 }
 
 #[derive(Deserialize)]
+pub enum Backend {
+    Stdio,
+    Honeycomb,
+}
+
+#[derive(Deserialize)]
 pub struct Config {
     pub milestone: Milestone,
+    pub backend: Backend,
     pub capsule_id: Option<OsString>,
     pub input_files: Vec<OsString>,
     pub tool_tags: Vec<OsString>,
@@ -28,6 +37,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             milestone: Milestone::Placebo,
+            backend: Backend::Stdio,
             capsule_id: None,
             input_files: vec![],
             tool_tags: vec![],

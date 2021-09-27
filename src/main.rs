@@ -1,10 +1,10 @@
 use anyhow::Result;
+use capsule::caching::backend::CachingBackend;
 use capsule::caching::honeycomb;
+use capsule::caching::stdio;
 use capsule::capsule::Capsule;
-use capsule::config::Config;
+use capsule::config::{Backend, Config};
 use capsule::wrapper;
-
-
 
 fn main() -> Result<()> {
     // Read arguments
@@ -21,15 +21,19 @@ fn main() -> Result<()> {
     //          store the failure code.
     // let caching_backend = CachingBackend::new();
     // let config = parse_config();
-    // let calculate_key(config, 
+    // let calculate_key(config,
     // let results = wrapper::execute();
     // if results.success() {
     //     let cacheable_bundle = create_cacheable_bundle(configuration, results);
-    //     let caching_backend.store = 
+    //     let caching_backend.store =
     // } else {
     // }
     let config = Config::new()?;
-    let capsule = Capsule::new(&config, Box::new(honeycomb::HoneycombBackend {}));
+    let backend : Box<dyn CachingBackend> = match config.backend {
+        Backend::Stdio => Box::new(stdio::StdioBackend {}),
+        Backend::Honeycomb => Box::new(honeycomb::HoneycombBackend {}),
+    };
+    let capsule = Capsule::new(&config, backend);
     capsule.write_cache()?;
     wrapper::execute()
 }
