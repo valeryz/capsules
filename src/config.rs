@@ -1,5 +1,6 @@
 use anyhow::{bail, Result};
 use clap::{App, Arg};
+use itertools;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::{env, ffi::OsString};
@@ -112,14 +113,16 @@ impl Config {
                     .about("Capture stderr with the cached bundle")
                     .long("stderr")
                     .takes_value(false),
-            );
+            )
+            .arg(Arg::new("command_to_run").last(true));
         let match_sources = [
-            arg_matches.clone().get_matches(),
-            arg_matches.clone().get_matches_from(
+            arg_matches.clone().get_matches_from(itertools::chain(
+                ["capsule"],
                 env::var("CAPSULE_ARGS")
                     .unwrap_or_default()
                     .split_whitespace(),
-            ),
+            )),
+            arg_matches.clone().get_matches(),
         ];
 
         for matches in &match_sources {
@@ -164,7 +167,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_command_line() {}
+    fn test_command_line() {
+        env::set_var("CAPSULE_ARGS", "-c my_capsule");
+        let config = Config::new().unwrap();
+        assert_eq!(config.capsule_id.unwrap(), "my_capsule");
+    }
 
     fn test_toml() {}
 
