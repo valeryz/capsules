@@ -1,4 +1,5 @@
 use anyhow::Result;
+use capsule::caching::backend::CachingBackend;
 use capsule::caching::honeycomb;
 use capsule::caching::stdio;
 use capsule::capsule::Capsule;
@@ -28,7 +29,7 @@ fn main() -> Result<()> {
     // } else {
     // }
     let config = Config::new()?;
-    let backend = match config.backend {
+    let backend : Box<dyn CachingBackend> = match config.backend {
         Backend::Stdio => Box::new(stdio::StdioBackend {}),
         Backend::Honeycomb => Box::new(honeycomb::HoneycombBackend {}),
     };
