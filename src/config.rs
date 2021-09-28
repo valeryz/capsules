@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::{env, ffi::OsString};
 use toml;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub enum Milestone {
     Placebo,
     BluePill,
@@ -14,13 +14,13 @@ pub enum Milestone {
     RedPill,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub enum Backend {
     Stdio,
     Honeycomb,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct Config {
     pub milestone: Milestone,
     pub backend: Backend,
@@ -50,9 +50,11 @@ impl Default for Config {
 }
 
 impl Config {
-    pub fn new<I, T>(cmdline_args: I,
-                     default_toml: Option<&std::path::Path>,
-                     current_toml: Option<&std::path::Path>) -> Result<Self>
+    pub fn new<I, T>(
+        cmdline_args: I,
+        default_toml: Option<&std::path::Path>,
+        current_toml: Option<&std::path::Path>,
+    ) -> Result<Self>
     where
         I: IntoIterator<Item = T>,
         T: Into<OsString> + Clone,
@@ -187,30 +189,49 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use std::iter;
 
     const EMPTY_ARGS: iter::Empty<OsString> = std::iter::empty::<OsString>();
 
     #[test]
+    #[serial]
     fn test_command_line_1() {
         env::set_var("CAPSULE_ARGS", "-c my_capsule -- /bin/echo");
         let config = Config::new(EMPTY_ARGS, None, None).unwrap();
         assert_eq!(config.capsule_id.unwrap(), "my_capsule");
+        assert_eq!(config.command_to_run[0], "/bin/echo");
+        env::remove_var("CAPSULE_ARGS");
     }
 
     #[test]
+    #[serial]
     fn test_command_line_2() {
-        let config = Config::new(vec!["placebo", "-c", "my_capsule", "--", "/bin/echo"], None, None).unwrap();
+        let config = Config::new(
+            vec!["placebo", "-c", "my_capsule", "--", "/bin/echo"],
+            None,
+            None,
+        )
+        .unwrap();
         assert_eq!(config.capsule_id.unwrap(), "my_capsule");
+        assert_eq!(config.command_to_run[0], "/bin/echo");
     }
 
-    fn test_toml() {
-
+    #[test]
+    #[serial]
+    fn test_command_line_no_command() {
+        Config::new(vec!["placebo", "-c", "my_capsule"], None, None).unwrap_err();
     }
 
+    #[test]
+    fn test_toml() {}
+
+    #[test]
     fn test_toml_defaults() {}
 
+    #[test]
     fn test_comamnd_line_precedence() {}
 
+    #[test]
     fn test_required_canister_id() {}
 }
