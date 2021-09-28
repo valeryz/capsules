@@ -50,14 +50,16 @@ impl Default for Config {
 }
 
 impl Config {
-    pub fn new<I, T>(cmdline_args: I) -> Result<Self>
+    pub fn new<I, T>(cmdline_args: I,
+                     default_toml: Option<&std::path::Path>,
+                     current_toml: Option<&std::path::Path>) -> Result<Self>
     where
         I: IntoIterator<Item = T>,
         T: Into<OsString> + Clone,
     {
         let mut config = Self::default();
-        if let Ok(home) = std::env::var("HOME") {
-            if let Ok(contents) = std::fs::read_to_string(home + "/.capsules.toml") {
+        if let Some(default_toml) = default_toml {
+            if let Ok(contents) = std::fs::read_to_string(default_toml) {
                 if let Ok(home_config) = toml::from_str(&contents) {
                     config = home_config;
                 }
@@ -65,11 +67,13 @@ impl Config {
         }
 
         let mut dir_config = HashMap::<String, Config>::new();
-        if let Ok(contents) = std::fs::read_to_string("Capsules.toml") {
-            if let Ok(config) = toml::from_str(&contents) {
-                dir_config = config;
-            } else {
-                bail!("Could not parse Capsules.toml");
+        if let Some(current_toml) = current_toml {
+            if let Ok(contents) = std::fs::read_to_string(current_toml) {
+                if let Ok(config) = toml::from_str(&contents) {
+                    dir_config = config;
+                } else {
+                    bail!("Could not parse Capsules.toml");
+                }
             }
         }
 
@@ -190,17 +194,19 @@ mod tests {
     #[test]
     fn test_command_line_1() {
         env::set_var("CAPSULE_ARGS", "-c my_capsule -- /bin/echo");
-        let config = Config::new(EMPTY_ARGS).unwrap();
+        let config = Config::new(EMPTY_ARGS, None, None).unwrap();
         assert_eq!(config.capsule_id.unwrap(), "my_capsule");
     }
 
     #[test]
     fn test_command_line_2() {
-        let config = Config::new(vec!["placebo", "-c", "my_capsule", "--", "/bin/echo"]).unwrap();
+        let config = Config::new(vec!["placebo", "-c", "my_capsule", "--", "/bin/echo"], None, None).unwrap();
         assert_eq!(config.capsule_id.unwrap(), "my_capsule");
     }
 
-    fn test_toml() {}
+    fn test_toml() {
+
+    }
 
     fn test_toml_defaults() {}
 

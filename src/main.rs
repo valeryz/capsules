@@ -1,4 +1,5 @@
 use std::env;
+use std::path::Path;
 use anyhow::Result;
 use capsule::caching::backend::CachingBackend;
 use capsule::caching::honeycomb;
@@ -29,7 +30,10 @@ fn main() -> Result<()> {
     //     let caching_backend.store =
     // } else {
     // }
-    let config = Config::new(env::args())?;
+    let default_toml =  std::env::var("HOME").ok().and_then(|home| Some(home + "/.capsules.toml"));
+    let config = Config::new(env::args(),
+                             default_toml.as_ref().map(Path::new),
+                             Some(Path::new("Capsule.toml").as_ref()))?;
     let backend : Box<dyn CachingBackend> = match config.backend {
         Backend::Stdio => Box::new(stdio::StdioBackend {}),
         Backend::Honeycomb => Box::new(honeycomb::HoneycombBackend {}),
