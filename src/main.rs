@@ -1,3 +1,4 @@
+use std::env;
 use anyhow::Result;
 use capsule::caching::backend::CachingBackend;
 use capsule::caching::honeycomb;
@@ -28,7 +29,7 @@ fn main() -> Result<()> {
     //     let caching_backend.store =
     // } else {
     // }
-    let config = Config::new()?;
+    let config = Config::new(env::args())?;
     let backend : Box<dyn CachingBackend> = match config.backend {
         Backend::Stdio => Box::new(stdio::StdioBackend {}),
         Backend::Honeycomb => Box::new(honeycomb::HoneycombBackend {}),

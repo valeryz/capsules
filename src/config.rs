@@ -50,7 +50,11 @@ impl Default for Config {
 }
 
 impl Config {
-    pub fn new() -> Result<Self> {
+    pub fn new<I, T>(cmdline_args: I) -> Result<Self>
+    where
+        I: IntoIterator<Item = T>,
+        T: Into<OsString> + Clone,
+    {
         let mut config = Self::default();
         if let Ok(home) = std::env::var("HOME") {
             if let Ok(contents) = std::fs::read_to_string(home + "/.capsules.toml") {
@@ -117,14 +121,18 @@ impl Config {
                     .takes_value(false),
             )
             .arg(Arg::new("command_to_run").last(true));
+
         let match_sources = [
+            // First we look at the environment variable CAPSULE_ARGS,
+            // which has the default args, not listed on command line.
             arg_matches.clone().get_matches_from(itertools::chain(
                 ["capsule"],
                 env::var("CAPSULE_ARGS")
                     .unwrap_or_default()
                     .split_whitespace(),
             )),
-            arg_matches.clone().get_matches(),
+            // Then we look at the actual command line args.
+            arg_matches.clone().get_matches_from(cmdline_args),
         ];
 
         for matches in &match_sources {
@@ -163,6 +171,11 @@ impl Config {
                 config.command_to_run = command.map(|x| x.to_os_string()).collect();
             }
         }
+
+        if config.command_to_run.is_empty() {
+            bail!("The command to run was not specified");
+        }
+
         Ok(config)
     }
 }
@@ -170,11 +183,20 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::iter;
+
+    const EMPTY_ARGS: iter::Empty<OsString> = std::iter::empty::<OsString>();
 
     #[test]
-    fn test_command_line() {
-        env::set_var("CAPSULE_ARGS", "-c my_capsule");
-        let config = Config::new().unwrap();
+    fn test_command_line_1() {
+        env::set_var("CAPSULE_ARGS", "-c my_capsule -- /bin/echo");
+        let config = Config::new(EMPTY_ARGS).unwrap();
+        assert_eq!(config.capsule_id.unwrap(), "my_capsule");
+    }
+
+    #[test]
+    fn test_command_line_2() {
+        let config = Config::new(vec!["placebo", "-c", "my_capsule", "--", "/bin/echo"]).unwrap();
         assert_eq!(config.capsule_id.unwrap(), "my_capsule");
     }
 
