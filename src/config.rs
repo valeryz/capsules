@@ -43,20 +43,6 @@ impl std::ops::Deref for Config {
     }
 }
 
-impl From<StringConfig> for Config {
-    fn from(config: StringConfig) -> Self {
-        Config {
-            capsule_id: config.capsule_id.map(OsString::from),
-            input_files: config.input_files.iter().map(OsString::from).collect(),
-            tool_tags: config.tool_tags.iter().map(OsString::from).collect(),
-            output_files: config.output_files.iter().map(OsString::from).collect(),
-            capture_stdout: config.capture_stdout,
-            capture_stderr: config.capture_stderr,
-            ..Config::default()
-        }
-    }
-}
-
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -97,6 +83,20 @@ struct StringConfig {
     pub capture_stderr: Option<bool>,
 }
 
+impl From<StringConfig> for Config {
+    fn from(config: StringConfig) -> Self {
+        Config {
+            capsule_id: config.capsule_id.map(OsString::from),
+            input_files: config.input_files.iter().map(OsString::from).collect(),
+            tool_tags: config.tool_tags.iter().map(OsString::from).collect(),
+            output_files: config.output_files.iter().map(OsString::from).collect(),
+            capture_stdout: config.capture_stdout,
+            capture_stderr: config.capture_stderr,
+            ..Config::default()
+        }
+    }
+}
+
 impl Config {
     // Merge one config (e.g. Capsule.toml) into another (~/.capsule.toml)
     // It destroys the argument.
@@ -122,9 +122,8 @@ impl Config {
         let mut config = Self::default();
         if let Some(default_toml) = default_toml {
             if let Ok(contents) = std::fs::read_to_string(default_toml) {
-                if let Ok(home_config) = toml::from_str::<StringConfig>(&contents) {
-                    config = Config::from(home_config);
-                }
+                let home_config = toml::from_str::<StringConfig>(&contents)?;
+                config = Config::from(home_config);
             }
         }
 
@@ -229,7 +228,9 @@ impl Config {
         let capsule_id: OsString = capsule_id.clone();
         let capsule_id: String = capsule_id.into_string().unwrap();
 
-        // dir_config can have many sections, relating to manu capsules. We just need one.
+        // Dir_config can have many sections, relating to manu capsules.
+        // We pick the onle related to the current capsule_id.
+        // We call .remove() to take full ownership of the single_config.
         if let Some(mut single_config) = dir_config.remove(&capsule_id) {
             config.merge(&mut single_config);
         }
@@ -326,7 +327,25 @@ mod tests {
     }
 
     #[test]
-    fn test_toml_defaults() {}
+    fn test_toml_defaults() {
+        let mut config_file = NamedTempFile::new().unwrap();
+        let config_contents: &'static str = indoc! {r#"
+           capture_stdout = true
+           tool_tags = ["docker-ABCDEF"]
+        "#};
+        println!("Config file:\n{}", config_contents);
+        config_file.write(config_contents.as_bytes()).unwrap();
+        config_file.flush().unwrap();
+
+        let config = Config::new(
+            vec!["placebo", "-c", "my_capsule", "--", "/bin/echo"],
+            Some(config_file.path()),
+            None,
+        )
+        .unwrap();
+        assert_eq!(config.capture_stdout, Some(true));
+        assert!(config.capture_stderr.is_none());
+    }
 
     #[test]
     fn test_comamnd_line_precedence() {}
