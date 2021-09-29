@@ -18,7 +18,7 @@ rust-nightly:
   allow_failure: true
 
 
-build-capsule:
+build-release:
   stage: build
   image: rust:latest
   script:
@@ -30,9 +30,9 @@ build-capsule:
 upload-release:
   before_script: []
   dependencies:
-    - build-capsule
+    - build-release
   needs:
-    - build-capsule
+    - build-release
   stage: upload
   image: curlimages/curl:latest
   # rules:
@@ -40,4 +40,4 @@ upload-release:
   script: |
     set -x
     export PACKAGE_REGISTRY_URL="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/capsule/${CI_COMMIT_TAG}"
-    curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ./target/release/capsule "${PACKAGE_REGISTRY_URL}/capsule
+    curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ./target/release/capsule "${PACKAGE_REGISTRY_URL}/capsule"
