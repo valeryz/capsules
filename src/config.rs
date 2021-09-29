@@ -2,7 +2,6 @@ use anyhow::{bail, Result};
 use clap::{App, Arg};
 use itertools;
 use serde::Deserialize;
-use sha2::digest::generic_array::typenum::private::IsEqualPrivate;
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::{env, ffi::OsString};
