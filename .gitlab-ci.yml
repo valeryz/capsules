@@ -3,21 +3,20 @@ stages:
   - upload
   - release
 
-rust-latest:
+build-test-debug-stable:
   stage: build
   image: rust:latest
   script:
     - cargo build --verbose
     - cargo test --verbose
 
-rust-nightly:
+build-test-debug-nightly:
   stage: build
   image: rustlang/rust:nightly
   script:
     - cargo build --verbose
     - cargo test --verbose
   allow_failure: true
-
 
 build-release:
   stage: build
@@ -40,7 +39,7 @@ upload-release:
     - if: $CI_COMMIT_TAG
   script: |
     set -x
-    export PACKAGE_REGISTRY_URL="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/capsule/${CI_COMMIT_TAG}"
+    export PACKAGE_REGISTRY_URL="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/capsule/${CI_COMMIT_TAG}"
     curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ./target/release/capsule "${PACKAGE_REGISTRY_URL}/capsule"
 
 make-release:
@@ -56,7 +55,7 @@ make-release:
     - if: $CI_COMMIT_TAG
   script: |
     set -x
-    export PACKAGE_REGISTRY_URL="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/capsule/${CI_COMMIT_TAG}"
+    export PACKAGE_REGISTRY_URL="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/capsule/${CI_COMMIT_TAG}"
     export CAPSULES_BINARY=capsule
     release-cli create --name "Release $CI_COMMIT_TAG" --tag-name $CI_COMMIT_TAG \
         --assets-link "{\"name\":\"capsule\",\"url\":\"${PACKAGE_REGISTRY_URL}/capsule\"}"
