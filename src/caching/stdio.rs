@@ -5,6 +5,8 @@ use std::ffi::OsStr;
 pub struct StdioBackend {}
 
 impl CachingBackend for StdioBackend {
+    fn name(&self) -> &'static str { return "stdio"; }
+    
     #[allow(unused_variables)]
     fn write(
         &self,
