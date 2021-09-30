@@ -106,6 +106,8 @@ impl Config {
         self.input_files.append(&mut config.input_files);
         self.output_files.append(&mut config.output_files);
         self.tool_tags.append(&mut config.tool_tags);
+        self.capture_stdout = config.capture_stdout;
+        self.capture_stderr = config.capture_stderr;
     }
 
     pub fn new<I, T>(
@@ -304,6 +306,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_toml() {
         let mut config_file = NamedTempFile::new().unwrap();
         let config_contents: &'static str = indoc! {r#"
@@ -326,6 +329,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_toml_defaults() {
         let mut config_file = NamedTempFile::new().unwrap();
         let config_contents: &'static str = indoc! {r#"
@@ -347,8 +351,117 @@ mod tests {
     }
 
     #[test]
-    fn test_comamnd_line_precedence() {}
+    #[serial]
+    fn test_toml_precedence() {
+        let mut default_config_file = NamedTempFile::new().unwrap();
+        let config_contents: &'static str = indoc! {r#"
+           capture_stdout = true
+           tool_tags = ["docker-ABCDEF"]
+        "#};
+        println!("Config file:\n{}", config_contents);
+        default_config_file
+            .write(config_contents.as_bytes())
+            .unwrap();
+        default_config_file.flush().unwrap();
+
+        let mut current_config_file = NamedTempFile::new().unwrap();
+        let config_contents: &'static str = indoc! {r#"
+           [my_capsule]
+           capture_stdout = false
+           output_files=["compiled_binary"]
+           input_files=["/etc/passwd", "/nonexistent"]
+           tool_tags = ["docker-1234"]
+        "#};
+        current_config_file
+            .write(config_contents.as_bytes())
+            .unwrap();
+        current_config_file.flush().unwrap();
+
+        let config = Config::new(
+            vec!["placebo", "-c", "my_capsule", "--", "/bin/echo"],
+            Some(default_config_file.path()),
+            Some(current_config_file.path()),
+        )
+        .unwrap();
+        assert_eq!(config.capture_stdout, Some(false));
+        assert!(config.capture_stderr.is_none());
+        assert_eq!(config.tool_tags, vec!["docker-ABCDEF", "docker-1234"]);
+    }
 
     #[test]
-    fn test_required_canister_id() {}
+    #[serial]
+    fn test_toml_capsule_id_mismatch() {
+        let mut current_config_file = NamedTempFile::new().unwrap();
+        let config_contents: &'static str = indoc! {r#"
+           [another_capsule]
+           capture_stdout = false
+           output_files=["compiled_binary"]
+           input_files=["/etc/passwd", "/nonexistent"]
+           tool_tags = ["docker-1234"]
+        "#};
+        current_config_file
+            .write(config_contents.as_bytes())
+            .unwrap();
+        current_config_file.flush().unwrap();
+
+        let config = Config::new(
+            vec!["placebo", "-c", "my_capsule", "--", "/bin/echo"],
+            None,
+            Some(current_config_file.path()),
+        )
+        .unwrap();
+        assert_eq!(config.tool_tags, Vec::<&str>::new());
+        assert_eq!(config.input_files, Vec::<&str>::new());
+        assert_eq!(config.output_files, Vec::<&str>::new());
+    }
+
+    #[test]
+    #[serial]
+    fn test_unique_canister_id() {
+        let mut current_config_file = NamedTempFile::new().unwrap();
+        let config_contents: &'static str = indoc! {r#"
+           [my_capsule_id]
+           output_files=["compiled_binary"]
+           input_files=["/etc/passwd", "/nonexistent"]
+        "#};
+        current_config_file
+            .write(config_contents.as_bytes())
+            .unwrap();
+        current_config_file.flush().unwrap();
+
+        let config = Config::new(
+            vec!["placebo", "--", "/bin/echo"],
+            None,
+            Some(current_config_file.path()),
+        )
+        .unwrap();
+        assert_eq!(config.capsule_id, Some(OsString::from("my_capsule_id")));
+    }
+
+    #[test]
+    #[serial]
+    fn test_missing_canister_id() {
+        let mut current_config_file = NamedTempFile::new().unwrap();
+        // This config has two sections, two capsule_ids. We don't know which one is meant.
+        let config_contents: &'static str = indoc! {r#"
+           [my_capsule_id]
+           output_files=["compiled_binary"]
+           input_files=["/etc/passwd", "/nonexistent"]
+
+           [other_capsule_id]
+           output_files=["compiled_binary"]
+           input_files=["/etc/passwd", "/nonexistent"]
+        "#};
+        current_config_file
+            .write(config_contents.as_bytes())
+            .unwrap();
+        current_config_file.flush().unwrap();
+
+        Config::new(
+            vec!["placebo", "--", "/bin/echo"],
+            None,
+            Some(current_config_file.path()),
+        )
+        .unwrap_err();
+    }
 }
