@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use clap::{App, Arg};
 use itertools;
 use serde::Deserialize;
@@ -24,6 +24,7 @@ pub enum Backend {
 #[derive(Debug)]
 pub struct Config {
     pub milestone: Milestone,
+    pub verbose: bool,
     pub backend: Backend,
     pub capsule_id: Option<OsString>,
     pub input_files: Vec<OsString>,
@@ -46,6 +47,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             milestone: Milestone::Placebo,
+            verbose: false,
             backend: Backend::Stdio,
             capsule_id: None,
             input_files: vec![],
@@ -67,6 +69,9 @@ struct StringConfig {
     pub capsule_id: Option<String>,
 
     #[serde(default)]
+    pub verbose: Option<bool>,
+
+    #[serde(default)]
     pub input_files: Vec<String>,
 
     #[serde(default)]
@@ -86,6 +91,7 @@ impl From<StringConfig> for Config {
     fn from(config: StringConfig) -> Self {
         Config {
             capsule_id: config.capsule_id.map(OsString::from),
+            verbose: config.verbose.unwrap_or(false),
             input_files: config.input_files.iter().map(OsString::from).collect(),
             tool_tags: config.tool_tags.iter().map(OsString::from).collect(),
             output_files: config.output_files.iter().map(OsString::from).collect(),
@@ -102,6 +108,9 @@ impl Config {
     pub fn merge(&mut self, config: &mut Self) {
         if self.capsule_id.is_none() {
             self.capsule_id = config.capsule_id.take();
+        }
+        if config.verbose {
+            self.verbose = true;
         }
         self.input_files.append(&mut config.input_files);
         self.output_files.append(&mut config.output_files);
@@ -123,7 +132,8 @@ impl Config {
         let mut config = Self::default();
         if let Some(default_toml) = default_toml {
             if let Ok(contents) = std::fs::read_to_string(default_toml) {
-                let home_config = toml::from_str::<StringConfig>(&contents)?;
+                let home_config = toml::from_str::<StringConfig>(&contents)
+                    .with_context(|| format!("Parsing default config {:?}", default_toml))?;
                 config = Config::from(home_config);
             }
         }

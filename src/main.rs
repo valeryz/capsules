@@ -8,28 +8,7 @@ use capsule::capsule::Capsule;
 use capsule::config::{Backend, Config};
 use capsule::wrapper;
 
-fn main() -> Result<()> {
-    // Read arguments
-    // Find out which are inputs, and which are outputs
-    // Calculate the key from the inputs:
-    //   - this process could as well be cached - we don't have to read all files all the time.
-    // Lookup the key in the cache.
-    // If a key is found, extract the required results, and skip running the command.
-    // If not found:
-    //     run the command
-    //     if succeeded (return code == 0):
-    //          store the results in the cache
-    //     else:
-    //          store the failure code.
-    // let caching_backend = CachingBackend::new();
-    // let config = parse_config();
-    // let calculate_key(config,
-    // let results = wrapper::execute();
-    // if results.success() {
-    //     let cacheable_bundle = create_cacheable_bundle(configuration, results);
-    //     let caching_backend.store =
-    // } else {
-    // }
+fn capsule_main() -> Result<()> {
     let default_toml =  std::env::var("HOME").ok().and_then(|home| Some(home + "/.capsules.toml"));
     let config = Config::new(env::args(),
                              default_toml.as_ref().map(Path::new),
@@ -39,6 +18,10 @@ fn main() -> Result<()> {
         Backend::Honeycomb => Box::new(honeycomb::HoneycombBackend {}),
     };
     let capsule = Capsule::new(&config, backend);
-    capsule.write_cache()?;
-    wrapper::execute(&config.command_to_run)
+    capsule.write_cache()
+}
+
+fn main() -> Result<()> {
+    capsule_main().unwrap_or_else(|e| eprintln!("Capsule error: {}", e));
+    wrapper::execute()
 }
