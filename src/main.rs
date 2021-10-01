@@ -22,6 +22,6 @@ fn capsule_main() -> Result<()> {
 }
 
 fn main() -> Result<()> {
-    capsule_main().unwrap_or_else(|e| eprintln!("Capsule error: {}", e));
+    capsule_main().unwrap_or_else(|e| eprintln!("Capsule error: {:#}", e));
     wrapper::execute()
 }

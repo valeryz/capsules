@@ -1,3 +1,4 @@
+use anyhow;
 use anyhow::{Context, Result};
 use bytes::Bytes;
 use sha2::{Digest, Sha256};
@@ -142,10 +143,10 @@ impl<'a> Capsule<'a> {
             .capsule_id
             .as_ref()
             .expect("capsule_id must be specified");
-        let input_hash =
-            &OsString::from(self.hash().with_context(|| {
-                format!("Hashing inputs of capsule {:?}", self.config.capsule_id)
-            })?);
+        let input_hash = &OsString::from(
+            self.hash()
+                .with_context(|| format!("Hashing inputs of capsule '{:?}'", capsule_id))?,
+        );
         self.caching_backend.write(
             capsule_id,
             input_hash,

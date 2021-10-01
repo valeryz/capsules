@@ -12,7 +12,9 @@ where
     I: Iterator<Item = String>,
 {
     let program_cstring = CString::new(program_name)?;
-    let arg_cstrings = args.map(CString::new).collect::<Result<Vec<_>, _>>()?;
+    let args: Vec<String> = args.collect();
+    println!("Executing {:?}", args);
+    let arg_cstrings = args.into_iter().map(CString::new).collect::<Result<Vec<_>, _>>()?;
 
     match execvp(&program_cstring, &arg_cstrings) {
         Ok(_) => unreachable!(),
