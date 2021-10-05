@@ -6,26 +6,31 @@ stages:
 build-test-debug-stable:
   stage: build
   image: rust:latest
-  script:
-    - cargo build --verbose
-    - cargo test --verbose
+  script: |
+    set -eux
+    cd capsule
+    cargo build --verbose --package capsule
+    cargo test --verbose --package capsule
 
 build-test-debug-nightly:
   stage: build
   image: rustlang/rust:nightly
-  script:
-    - cargo build --verbose
-    - cargo test --verbose
+  script: |
+    set -eux
+    cd capsule
+    cargo build --verbose --package capsule
+    cargo test --verbose --package capsule
   allow_failure: true
 
 build-release:
   stage: build
   image: rust:latest
-  script:
-    - cargo build --package capsule --release
+  script: |
+    cd capsule 
+    cargo build --package capsule --release
   artifacts:
     paths:
-      - ./target/release/capsule
+      - ./capsule/target/release/capsule
 
 upload-release:
   before_script: []
@@ -38,7 +43,8 @@ upload-release:
   rules:
     - if: $CI_COMMIT_TAG
   script: |
-    set -x
+    set -eux
+    cd capsule
     export PACKAGE_REGISTRY_URL="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/capsule/${CI_COMMIT_TAG}"
     curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ./target/release/capsule "${PACKAGE_REGISTRY_URL}/capsule"
 
@@ -54,8 +60,8 @@ make-release:
   rules:
     - if: $CI_COMMIT_TAG
   script: |
-    set -x
+    set -eux
+    cd capsule
     export PACKAGE_REGISTRY_URL="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/capsule/${CI_COMMIT_TAG}"
-    export CAPSULES_BINARY=capsule
     release-cli create --name "Release $CI_COMMIT_TAG" --tag-name $CI_COMMIT_TAG \
         --assets-link "{\"name\":\"capsule\",\"url\":\"${PACKAGE_REGISTRY_URL}/capsule\"}"
