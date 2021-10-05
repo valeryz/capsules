@@ -158,7 +158,7 @@ impl Config {
 
         // Read the command line from both os::args and the environment.
         let arg_matches = App::new("capsule")
-            .version("0.1.1")
+            .version(env!("CARGO_PKG_VERSION"))
             .arg(
                 Arg::new("capsule_id")
                     .about("The ID of the capsule (usually a target path)")
