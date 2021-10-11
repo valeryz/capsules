@@ -14,7 +14,7 @@ fn capsule_main() -> Result<()> {
                              default_toml.as_ref().map(Path::new),
                              Some(Path::new("Capsule.toml").as_ref()))?;
     let backend : Box<dyn CachingBackend> = match config.backend {
-        Backend::Stdio => Box::new(stdio::StdioBackend {}),
+        Backend::Stdio => Box::new(stdio::StdioBackend {verbose_output: config.verbose}),
         Backend::Honeycomb => Box::new(honeycomb::HoneycombBackend {}),
     };
     let capsule = Capsule::new(&config, backend);
