@@ -2,6 +2,8 @@ use anyhow::Result;
 use std::ffi::OsStr;
 use std::fmt;
 
+use crate::iohashing::HashBundle;
+
 pub struct OutputsBundle {
     // TODO: define what goes in the outputs bundle to be cached.
     //
@@ -15,7 +17,7 @@ pub trait CachingBackend {
     fn write(
         &self,
         capsule_id: &OsStr,
-        inputs_key: &OsStr,
+        inputs_bundle: &HashBundle,
         outputs_key: &OsStr,
         output_bundle: &OutputsBundle,
     ) -> Result<()>;
