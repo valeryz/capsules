@@ -2,6 +2,8 @@ use anyhow::Result;
 use crate::caching::backend::{CachingBackend, OutputsBundle};
 use std::ffi::OsStr;
 
+use crate::iohashing::HashBundle;
+
 pub struct HoneycombBackend {
     // TODO: add whatever is necessary for Honeycomb.
 }
@@ -12,7 +14,7 @@ impl CachingBackend for HoneycombBackend {
     fn write(
         &self,
         capsule_id: &OsStr,
-        inputs_key: &OsStr,
+        inputs_bundle: &HashBundle,
         outputs_key: &OsStr,
         output_bundle: &OutputsBundle,
     ) -> Result<()> {
