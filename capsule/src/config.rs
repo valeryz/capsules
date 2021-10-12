@@ -203,6 +203,13 @@ impl Config {
                     .long("stderr")
                     .takes_value(false),
             )
+            .arg(
+                Arg::new("verbose")
+                    .about("Verbose output")
+                    .short('v')
+                    .long("verbose")
+                    .takes_value(false),
+            )
             .arg(Arg::new("command_to_run").last(true));
 
         let match_sources = [
@@ -261,6 +268,9 @@ impl Config {
             }
             if matches.is_present("stderr") {
                 config.capture_stderr = Some(true);
+            }
+            if matches.is_present("verbose") {
+                config.verbose = true;
             }
             if let Some(command) = matches.values_of_os("command_to_run") {
                 config.command_to_run = command.map(|x| x.to_os_string()).collect();

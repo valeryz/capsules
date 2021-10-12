@@ -4,11 +4,15 @@ use std::ffi::OsStr;
 
 use crate::iohashing::HashBundle;
 
-pub struct StdioBackend {}
+pub struct StdioBackend {
+    pub verbose_output: bool,
+}
 
 impl CachingBackend for StdioBackend {
-    fn name(&self) -> &'static str { return "stdio"; }
-    
+    fn name(&self) -> &'static str {
+        return "stdio";
+    }
+
     #[allow(unused_variables)]
     fn write(
         &self,
@@ -18,11 +22,13 @@ impl CachingBackend for StdioBackend {
         output_bundle: &OutputsBundle,
     ) -> Result<()> {
         println!(
-            "Capsule ID: '{}'. Inputs key: '{}'\n  Capsule Inputs hashes: {:?}",
+            "Capsule ID: '{}'. Inputs key: '{}'",
             capsule_id.to_string_lossy(),
-            inputs_bundle.hash,
-            inputs_bundle.input_hashes
+            inputs_bundle.hash
         );
+        if self.verbose_output {
+            println!("  Capsule Inputs hashes: {:?}", inputs_bundle.input_hashes);
+        }
         Ok(())
     }
 }
