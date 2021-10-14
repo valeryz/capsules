@@ -6,7 +6,6 @@ use std::io::Read;
 use std::os::unix::prelude::OsStrExt;
 use sha2::{Digest, Sha256};
 use std::ffi::{OsStr, OsString};
-use serde::Serialize;
 
 #[derive(PartialOrd, Ord, PartialEq, Eq, Debug)]
 pub enum Input<'a> {
@@ -22,7 +21,7 @@ pub struct InputSet<'a> {
     pub inputs: Vec<Input<'a>>,
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default)]
 pub struct HashBundle<'a> {
     pub hash: String,
     pub hash_details: Vec<(&'a Input<'a>, String)>,
