@@ -27,7 +27,7 @@ impl CachingBackend for StdioBackend {
             inputs_bundle.hash
         );
         if self.verbose_output {
-            println!("  Capsule Inputs hashes: {:?}", inputs_bundle.input_hashes);
+            println!("  Capsule Inputs hashes: {:?}", inputs_bundle.hash_details);
         }
         Ok(())
     }
