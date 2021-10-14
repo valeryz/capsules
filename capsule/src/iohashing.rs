@@ -6,6 +6,7 @@ use std::io::Read;
 use std::os::unix::prelude::OsStrExt;
 use sha2::{Digest, Sha256};
 use std::ffi::{OsStr, OsString};
+use serde::Serialize;
 
 #[derive(PartialOrd, Ord, PartialEq, Eq, Debug)]
 pub enum Input<'a> {
@@ -21,10 +22,10 @@ pub struct InputSet<'a> {
     pub inputs: Vec<Input<'a>>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
 pub struct HashBundle<'a> {
     pub hash: String,
-    pub input_hashes: Vec<(&'a Input<'a>, String)>,
+    pub hash_details: Vec<(&'a Input<'a>, String)>,
 }
 
 // TODO: should we also add exec bit?
@@ -94,17 +95,17 @@ impl<'a> InputSet<'a> {
         for input in &self.inputs {
             match input {
                 Input::File(s) => {
-                    hash_bundle.input_hashes.push((input, format!("File{}", file_hash(s)?)));
+                    hash_bundle.hash_details.push((input, format!("File{}", file_hash(s)?)));
                 }
                 Input::ToolTag(s) => {
-                    hash_bundle.input_hashes.push((input, format!("ToolTag{}", string_hash(s))));
+                    hash_bundle.hash_details.push((input, format!("ToolTag{}", string_hash(s))));
                 }
             }
         }
         // Sort inputs hashes by the hash value.
-        hash_bundle.input_hashes.sort_by(|a, b| a.1.cmp(&b.1));
+        hash_bundle.hash_details.sort_by(|a, b| a.1.cmp(&b.1));
         let mut acc: Sha256 = Sha256::new();
-        for hash in hash_bundle.input_hashes.iter() {
+        for hash in hash_bundle.hash_details.iter() {
             acc.update(&hash.1);
         }
         hash_bundle.hash = format!("{:x}", acc.finalize());
@@ -183,7 +184,7 @@ mod tests {
         let bundle1 = input_set1.hash_bundle().unwrap();
         let bundle2 = input_set2.hash_bundle().unwrap();
         assert_eq!(bundle1.hash, bundle2.hash);
-        assert_eq!(bundle1.input_hashes, bundle2.input_hashes);
+        assert_eq!(bundle1.hash_details, bundle2.hash_details);
     }
 
 
