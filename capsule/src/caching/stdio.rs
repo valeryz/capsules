@@ -14,13 +14,7 @@ impl CachingBackend for StdioBackend {
     }
 
     #[allow(unused_variables)]
-    fn write(
-        &self,
-        capsule_id: &OsStr,
-        inputs_bundle: &HashBundle,
-        outputs_key: &OsStr,
-        output_bundle: &OutputsBundle,
-    ) -> Result<()> {
+    fn write(&self, capsule_id: &OsStr, inputs_bundle: &HashBundle, output_bundle: &HashBundle) -> Result<()> {
         println!(
             "Capsule ID: '{}'. Inputs key: '{}'",
             capsule_id.to_string_lossy(),

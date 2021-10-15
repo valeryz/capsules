@@ -1,8 +1,7 @@
 use anyhow;
 use anyhow::{Context, Result};
-use std::ffi::{OsStr, OsString};
 
-use crate::caching::backend::{CachingBackend, OutputsBundle};
+use crate::caching::backend::CachingBackend;
 use crate::config::Config;
 use crate::iohashing::*;
 
@@ -36,21 +35,16 @@ impl<'a> Capsule<'a> {
     }
 
     pub fn write_cache(&self) -> Result<()> {
-        // Outputs bundle is ununsed in Placebo.
-        let bundle = OutputsBundle {};
-        let capsule_id = self
-            .config
-            .capsule_id
-            .as_ref()
-            .expect("capsule_id must be specified");
-        let input_bundle = self.inputs.hash_bundle()
+        // Outputs bundle is ununsed in Placebo, creating an empty one.
+        let output_bundle = HashBundle {
+            hash: "".into(),
+            hash_details: vec![],
+        };
+        let capsule_id = self.config.capsule_id.as_ref().expect("capsule_id must be specified");
+        let input_bundle = self
+            .inputs
+            .hash_bundle()
             .with_context(|| format!("Hashing inputs of capsule '{:?}'", capsule_id))?;
-        self.caching_backend.write(
-            capsule_id,
-            &input_bundle,
-            &OsString::from(""), // output_hash
-            &bundle,
-        )
+        self.caching_backend.write(capsule_id, &input_bundle, &output_bundle)
     }
 }
-

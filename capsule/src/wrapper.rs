@@ -1,11 +1,10 @@
+use anyhow::{anyhow, Result};
+use itertools;
+use nix::unistd::execvp;
 use std::env;
 use std::ffi::CString;
-use itertools;
-use anyhow::{anyhow, Result};
-use nix::unistd::execvp;
 
-static USAGE: &'static str =
-    "Usage: capsule <capsule arguments ...> -- command [<arguments>]";
+static USAGE: &'static str = "Usage: capsule <capsule arguments ...> -- command [<arguments>]";
 
 pub fn exec_program<I>(program_name: String, args: I) -> Result<()>
 where
@@ -18,10 +17,9 @@ where
 
     match execvp(&program_cstring, &arg_cstrings) {
         Ok(_) => unreachable!(),
-        Err(error) => Err(error.into())
+        Err(error) => Err(error.into()),
     }
 }
-
 
 /// Execute a given command transparently passing the original arguments.
 pub fn execute() -> Result<()> {
