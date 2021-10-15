@@ -9,7 +9,8 @@ pub struct Capsule<'a> {
     config: &'a Config,
     caching_backend: Box<dyn CachingBackend>,
     inputs: InputSet<'a>,
-    outputs: OutputSet<'a>,
+    // TODO(valeryz): enable it in Blue Pill.
+    // outputs: OutputSet<'a>,
 }
 
 impl<'a> Capsule<'a> {
@@ -18,7 +19,7 @@ impl<'a> Capsule<'a> {
             config,
             caching_backend,
             inputs: InputSet::default(),
-            outputs: OutputSet::default(),
+            // outputs: OutputSet::default(),
         };
 
         for file in &config.input_files {

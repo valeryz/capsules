@@ -1,4 +1,4 @@
-use crate::caching::backend::{CachingBackend, OutputsBundle};
+use crate::caching::backend::CachingBackend;
 use anyhow::Result;
 use std::ffi::OsStr;
 
