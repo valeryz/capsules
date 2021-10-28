@@ -1,11 +1,11 @@
 use anyhow;
 use anyhow::{Context, Result};
 use bytes::Bytes;
+use sha2::{Digest, Sha256};
+use std::ffi::{OsStr, OsString};
 use std::fs::File;
 use std::io::Read;
 use std::os::unix::prelude::OsStrExt;
-use sha2::{Digest, Sha256};
-use std::ffi::{OsStr, OsString};
 
 #[derive(PartialOrd, Ord, PartialEq, Eq, Debug)]
 pub enum Input<'a> {
@@ -57,8 +57,7 @@ pub struct OutputSet<'a> {
 fn file_hash(filename: &OsStr) -> Result<String> {
     const BUFSIZE: usize = 4096;
     let mut acc = Sha256::new();
-    let mut f =
-        File::open(filename).with_context(|| format!("Reading input file {:?}", filename))?;
+    let mut f = File::open(filename).with_context(|| format!("Reading input file {:?}", filename))?;
     let mut buf: [u8; BUFSIZE] = [0; BUFSIZE];
     loop {
         let rd = f.read(&mut buf)?;
@@ -97,7 +96,9 @@ impl<'a> InputSet<'a> {
                     hash_bundle.hash_details.push((input, format!("File{}", file_hash(s)?)));
                 }
                 Input::ToolTag(s) => {
-                    hash_bundle.hash_details.push((input, format!("ToolTag{}", string_hash(s))));
+                    hash_bundle
+                        .hash_details
+                        .push((input, format!("ToolTag{}", string_hash(s))));
                 }
             }
         }
@@ -116,15 +117,13 @@ impl<'a> InputSet<'a> {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io::Write;
     use tempfile::NamedTempFile;
 
-    const EMPTY_SHA256: &'static str =
-        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+    const EMPTY_SHA256: &'static str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
     #[test]
     fn file_hash_test() -> Result<()> {
@@ -185,7 +184,6 @@ mod tests {
         assert_eq!(bundle1.hash, bundle2.hash);
         assert_eq!(bundle1.hash_details, bundle2.hash_details);
     }
-
 
     #[test]
     fn test_input_set_file() {
