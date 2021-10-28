@@ -42,8 +42,8 @@ impl CachingBackend for HoneycombBackend {
         if let Some(value) = &self.parent_id {
             map.insert("trace.parent_id".into(), value.clone().into());
         }
-        map.insert("outputs_hash_details".into(), hash_details_to_json(inputs_bundle));
-        map.insert("outputs_hash".into(), inputs_bundle.hash.clone().into());
+        map.insert("outputs_hash_details".into(), hash_details_to_json(output_bundle));
+        map.insert("outputs_hash".into(), output_bundle.hash.clone().into());
         let client = reqwest::blocking::Client::new();
         let request = client
             .post(format!("https://api.honeycomb.io/1/events/{}", self.dataset))
