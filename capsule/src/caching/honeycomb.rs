@@ -1,9 +1,6 @@
 use crate::caching::backend::CachingBackend;
 use anyhow::Result;
 use reqwest;
-use std::ffi::OsStr;
-// use serde;
-// use serde::Serialize;
 use crate::iohashing::{HashBundle, Input};
 use serde_json;
 
@@ -16,11 +13,19 @@ pub struct HoneycombBackend {
     pub parent_id: Option<String>,
 }
 
+/// Max number of JSON entries in the dict. We need to cap it so that
+/// the JSON Size doesn't exceed 100kB.
+const MAX_JSON_ENTRIES: usize = 500;
+
 /// Convert hash deails (with each filename and tool_tag separately) to JSON.
 fn hash_details_to_json(bundle: &HashBundle) -> serde_json::Value {
     let mut file_map = serde_json::Map::<String, serde_json::Value>::new();
     let mut tool_tag_map = serde_json::Map::<String, serde_json::Value>::new();
     for (input, hash) in bundle.hash_details.iter() {
+        // Cap the size of the resulting JSON.
+        if file_map.len() + tool_tag_map.len() > MAX_JSON_ENTRIES {
+            break;
+        }
         let value = serde_json::Value::String(hash.to_string());
         match input {
             Input::File(filename) => {
