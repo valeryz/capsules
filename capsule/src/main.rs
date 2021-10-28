@@ -44,7 +44,7 @@ fn capsule_main() -> Result<()> {
             trace_id: config
                 .honeycomb_trace_id
                 .clone()
-                .ok_or(anyhow!("Trace ID is not specified"))?
+                .ok_or(anyhow!("Honeycomb Trace ID is not specified"))?
                 .to_string_lossy()
                 .into_owned(),
             parent_id: config.honeycomb_parent_id.as_ref().map(|x| x.to_string_lossy().into()),
