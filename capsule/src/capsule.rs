@@ -46,6 +46,6 @@ impl<'a> Capsule<'a> {
             .inputs
             .hash_bundle()
             .with_context(|| format!("Hashing inputs of capsule '{:?}'", capsule_id))?;
-        self.caching_backend.write(capsule_id, &input_bundle, &output_bundle)
+        self.caching_backend.write(&input_bundle, &output_bundle)
     }
 }

@@ -37,7 +37,7 @@ fn hash_details_to_json(bundle: &HashBundle) -> serde_json::Value {
     }
     if !tool_tag_map.is_empty() {
         json_map.insert("tool_tag".into(), serde_json::Value::Object(tool_tag_map));
-    }    
+    }
     serde_json::Value::Object(json_map)
 }
 
@@ -46,8 +46,7 @@ impl CachingBackend for HoneycombBackend {
         return "backend";
     }
 
-    #[allow(unused_variables)]
-    fn write(&self, capsule_id: &OsStr, inputs_bundle: &HashBundle, output_bundle: &HashBundle) -> Result<()> {
+    fn write(&self, inputs_bundle: &HashBundle, output_bundle: &HashBundle) -> Result<()> {
         let mut map = serde_json::Map::new();
         map.insert("trace.trace_id".into(), self.trace_id.clone().into());
         map.insert("trace.span_id".into(), self.capsule_id.clone().into());
@@ -59,11 +58,11 @@ impl CachingBackend for HoneycombBackend {
         map.insert("outputs_hash_details".into(), hash_details_to_json(output_bundle));
         map.insert("outputs_hash".into(), output_bundle.hash.clone().into());
         let client = reqwest::blocking::Client::new();
-        let request = client
+        client
             .post(format!("https://api.honeycomb.io/1/events/{}", self.dataset))
             .header("X-Honeycomb-Team", &self.honeycomb_token)
             .json(&map)
-            .send();
+            .send()?;
         Ok(())
     }
 }

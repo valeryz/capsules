@@ -16,7 +16,7 @@ pub trait CachingBackend {
         return "backend";
     }
 
-    fn write(&self, capsule_id: &OsStr, inputs_bundle: &HashBundle, output_bundle: &HashBundle) -> Result<()>;
+    fn write(&self, inputs_bundle: &HashBundle, output_bundle: &HashBundle) -> Result<()>;
 }
 
 impl fmt::Debug for dyn CachingBackend {

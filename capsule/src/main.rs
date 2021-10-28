@@ -21,6 +21,12 @@ fn capsule_main() -> Result<()> {
     let backend: Box<dyn CachingBackend> = match config.backend {
         Backend::Stdio => Box::new(stdio::StdioBackend {
             verbose_output: config.verbose,
+            capsule_id: config
+                .capsule_id
+                .as_ref()
+                .ok_or(anyhow!("no capsule_id"))?
+                .to_string_lossy()
+                .into(),
         }),
         Backend::Honeycomb => Box::new(honeycomb::HoneycombBackend {
             dataset: config

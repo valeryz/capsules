@@ -1,11 +1,11 @@
 use crate::caching::backend::CachingBackend;
 use anyhow::Result;
-use std::ffi::OsStr;
 
 use crate::iohashing::HashBundle;
 
 pub struct StdioBackend {
     pub verbose_output: bool,
+    pub capsule_id: String,
 }
 
 impl CachingBackend for StdioBackend {
@@ -14,10 +14,10 @@ impl CachingBackend for StdioBackend {
     }
 
     #[allow(unused_variables)]
-    fn write(&self, capsule_id: &OsStr, inputs_bundle: &HashBundle, output_bundle: &HashBundle) -> Result<()> {
+    fn write(&self, inputs_bundle: &HashBundle, output_bundle: &HashBundle) -> Result<()> {
         println!(
             "Capsule ID: '{}'. Inputs key: '{}'",
-            capsule_id.to_string_lossy(),
+            self.capsule_id,
             inputs_bundle.hash
         );
         if self.verbose_output {
