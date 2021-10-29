@@ -1,5 +1,4 @@
 use anyhow::Result;
-use std::ffi::OsStr;
 use std::fmt;
 
 use crate::iohashing::HashBundle;

@@ -2,6 +2,7 @@ use anyhow;
 use anyhow::{Context, Result};
 use bytes::Bytes;
 use sha2::{Digest, Sha256};
+use std::cmp::Ordering;
 use std::ffi::{OsStr, OsString};
 use std::fs::File;
 use std::io::Read;
@@ -9,10 +10,10 @@ use std::os::unix::prelude::OsStrExt;
 
 #[derive(PartialOrd, Ord, PartialEq, Eq, Debug)]
 pub enum Input<'a> {
-    /// Input file.
-    File(&'a OsString),
     /// string uniquely defining the tool version (could be even the hash of its binary).    
     ToolTag(&'a OsString),
+    /// Input file.
+    File(&'a OsString),
 }
 
 /// Input set is the set of all inputs to the build step.
@@ -102,8 +103,15 @@ impl<'a> InputSet<'a> {
                 }
             }
         }
-        // Sort inputs hashes by the hash value.
-        hash_bundle.hash_details.sort_by(|a, b| a.1.cmp(&b.1));
+        // Sort inputs hashes by the hash value, but so that tool_tags come first.
+        hash_bundle.hash_details.sort_by(|a, b| {
+            let cmp = a.0.cmp(&b.0);  // Tool_tag has priority over file
+            if cmp == Ordering::Equal {
+                a.1.cmp(&b.1)
+            } else {
+                cmp
+            }
+        });
         let mut acc: Sha256 = Sha256::new();
         for hash in hash_bundle.hash_details.iter() {
             acc.update(&hash.1);

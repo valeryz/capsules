@@ -5,11 +5,19 @@ use crate::iohashing::{HashBundle, Input};
 use serde_json;
 
 pub struct HoneycombBackend {
-    // TODO: add whatever is necessary for Honeycomb.
+    /// Honeycomb dataset ('capsule', or 'capsule-test' etc.)
     pub dataset: String,
+
+    /// Token for the Honeycomb API.
     pub honeycomb_token: String,
+
+    /// Capsule ID of this capsule invocation.
     pub capsule_id: String,
+
+    /// Honeycomb Trace ID
     pub trace_id: String,
+
+    /// Honeycomb Parent trace ID.
     pub parent_id: Option<String>,
 }
 
