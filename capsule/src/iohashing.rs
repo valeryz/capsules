@@ -1,6 +1,5 @@
 use anyhow;
 use anyhow::{Context, Result};
-use bytes::Bytes;
 use sha2::{Digest, Sha256};
 use std::cmp::Ordering;
 use std::ffi::{OsStr, OsString};
@@ -28,28 +27,6 @@ pub struct HashBundle<'a> {
     pub hash_details: Vec<(&'a Input<'a>, String)>,
 }
 
-// TODO: should we also add exec bit?
-#[derive(PartialOrd, Ord, PartialEq, Eq)]
-pub struct FileOutput<'a> {
-    filename: &'a OsString,
-    present: bool,
-    contents: Bytes,
-}
-
-#[derive(PartialOrd, Ord, PartialEq, Eq)]
-pub enum Output<'a> {
-    File(&'a FileOutput<'a>),
-    Stdout(&'a OsString),
-    Stderr(&'a OsString),
-    Log(&'a FileOutput<'a>),
-}
-
-/// Output set is the set of all process outputs.
-#[derive(Default)]
-pub struct OutputSet<'a> {
-    pub outputs: Vec<(Output<'a>, bool)>, // The bool indicates whether we store this output in the cache.
-}
-
 /// Returns the hash of the given file.
 ///
 /// TODO(valeryz): Cache these in a parent process' memory by the
@@ -75,6 +52,16 @@ fn string_hash(s: &OsStr) -> String {
     acc.update(s.as_bytes());
     format!("{:x}", acc.finalize())
 }
+
+/// Helper function for both input and output hash finalization.
+fn bundle_hash<T>(hash_details: &Vec<(T, String)>) -> String {
+    let mut acc: Sha256 = Sha256::new();
+    for hash in hash_details.iter() {
+        acc.update(&hash.1);
+    }
+    format!("{:x}", acc.finalize())
+}
+
 
 impl<'a> InputSet<'a> {
     /// Returns the HEX string of the hash of the whole input set.
@@ -104,24 +91,100 @@ impl<'a> InputSet<'a> {
             }
         }
         // Sort inputs hashes by the hash value, but so that tool_tags come first.
+        // This is needed so that when we cap our JSON, we could still see tool_tags.
         hash_bundle.hash_details.sort_by(|a, b| {
-            let cmp = a.0.cmp(&b.0);  // Tool_tag has priority over file
-            if cmp == Ordering::Equal {
-                a.1.cmp(&b.1)
+            if let Input::ToolTag(_) = a.0 {
+                if let Input::ToolTag(_) = b.0 {
+                    a.1.cmp(&b.1)
+                } else {
+                    Ordering::Less
+                }
             } else {
-                cmp
+                a.1.cmp(&b.1)
             }
         });
-        let mut acc: Sha256 = Sha256::new();
-        for hash in hash_bundle.hash_details.iter() {
-            acc.update(&hash.1);
-        }
-        hash_bundle.hash = format!("{:x}", acc.finalize());
+        hash_bundle.hash = bundle_hash(&hash_bundle.hash_details);
         Ok(hash_bundle)
     }
 
     pub fn add_input(&mut self, input: Input<'a>) {
         self.inputs.push(input)
+    }
+}
+
+// TODO: should we also add exec bit? or whole UNIX permissions?
+#[derive(PartialOrd, Ord, PartialEq, Eq, Debug)]
+pub struct FileOutput<'a> {
+    pub filename: &'a OsString,
+    pub present: bool,
+    // TODO[bluepill]: add file contents, which would stored in the cache.
+}
+
+#[derive(PartialOrd, Ord, PartialEq, Eq, Debug)]
+pub enum Output<'a> {
+    // TODO: to be handled in placebo/blue pill.
+    File(&'a FileOutput<'a>),
+    ExitCode(usize),
+    // TODO[bluepill]: to be handled in the future.
+    Stdout(&'a OsString),
+    Stderr(&'a OsString),
+    Log(&'a FileOutput<'a>),
+}
+
+#[derive(Debug, Default)]
+pub struct OutputHashBundle<'a> {
+    pub hash: String,
+    pub hash_details: Vec<(&'a Output<'a>, String)>,
+}
+
+/// Output set is the set of all process outputs.
+#[derive(Default)]
+pub struct OutputSet<'a> {
+    pub outputs: Vec<Output<'a>>,
+}
+
+impl<'a> OutputSet<'a> {
+    /// Returns the HEX string of the hash of the whole input set.
+    ///
+    /// We calculate the whole hash bundle, and discard the separate hashes.
+    pub fn hash(&'a self) -> Result<String> {
+        self.hash_bundle().map(|x| x.hash)
+    }
+
+    /// Returns the HEX string of the hash of the files in the input set, and the total hash.
+    ///
+    /// It does this by calculating a SHA256 hash of all SHA256 hashes of inputs (being either file
+    /// or tool tag) sorted by the values of the hashes themselves.
+    pub fn hash_bundle(&'a self) -> Result<OutputHashBundle<'a>> {
+        // Calculate the hash of the input set independently of the order.
+        let mut hash_bundle = OutputHashBundle::default();
+        for output in &self.outputs {
+            match output {
+                Output::File(file_output) => {
+                    hash_bundle.hash_details.push(
+                        (output,
+                         if file_output.present {
+                             format!("File{}", file_hash(file_output.filename)?)
+                         } else {
+                             "FileNonExistent".to_string()
+                         }))
+                }
+                Output::ExitCode(code) => {
+                    hash_bundle
+                        .hash_details
+                        .push((output, format!("ExitCode{}", code)));
+                }
+                _ => { }
+            }
+        }
+        // Sort inputs hashes by the hash value.
+        hash_bundle.hash_details.sort_by(|a, b| a.1.cmp(&b.1));
+        hash_bundle.hash = bundle_hash(&hash_bundle.hash_details);
+        Ok(hash_bundle)
+    }
+
+    pub fn add_output(&mut self, output: Output<'a>) {
+        self.outputs.push(output)
     }
 }
 

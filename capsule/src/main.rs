@@ -62,5 +62,8 @@ fn capsule_main() -> Result<()> {
 
 fn main() -> Result<()> {
     capsule_main().unwrap_or_else(|e| eprintln!("Capsule error: {:#}", e));
+    // TODO: this goes away! - or maybe not!
     wrapper::execute()
+
+    // TODO: pass through the exit code from the wrapped program.
 }

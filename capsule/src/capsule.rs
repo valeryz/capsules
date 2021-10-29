@@ -37,7 +37,7 @@ impl<'a> Capsule<'a> {
 
     pub fn write_cache(&self) -> Result<()> {
         // Outputs bundle is ununsed in Placebo, creating an empty one.
-        let output_bundle = HashBundle {
+        let output_bundle = OutputHashBundle {
             hash: "".into(),
             hash_details: vec![],
         };
@@ -46,6 +46,11 @@ impl<'a> Capsule<'a> {
             .inputs
             .hash_bundle()
             .with_context(|| format!("Hashing inputs of capsule '{:?}'", capsule_id))?;
+
+        // TODO: call the wrapped program.
+
+        // TODO: calculate the output bundle.
+
         self.caching_backend.write(&input_bundle, &output_bundle)
     }
 }

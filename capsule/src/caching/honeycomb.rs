@@ -1,7 +1,7 @@
 use crate::caching::backend::CachingBackend;
 use anyhow::Result;
 use reqwest;
-use crate::iohashing::{HashBundle, Input};
+use crate::iohashing::{HashBundle, OutputHashBundle, Input, Output};
 use serde_json;
 
 pub struct HoneycombBackend {
@@ -54,12 +54,42 @@ fn hash_details_to_json(bundle: &HashBundle) -> serde_json::Value {
     serde_json::Value::Object(json_map)
 }
 
+/// Convert hash deails (with each filename and tool_tag separately) to JSON.
+fn output_hash_details_to_json(bundle: &OutputHashBundle) -> serde_json::Value {
+    let mut file_map = serde_json::Map::<String, serde_json::Value>::new();
+    let mut exit_code : Option<usize> = None;
+    for (output, hash) in bundle.hash_details.iter() {
+        // Cap the size of the resulting JSON.
+        if file_map.len() > MAX_JSON_ENTRIES {
+            break;
+        }
+        let value = serde_json::Value::String(hash.to_string());
+        match output {
+            Output::File(file_output) => {
+                file_map.insert(format!("{}", file_output.filename.to_string_lossy()), value);
+            },
+            Output::ExitCode(code) => {
+                exit_code = Some(*code);
+            },
+            _ => { }
+        }
+    }
+    let mut json_map = serde_json::Map::<String, serde_json::Value>::new();
+    if !file_map.is_empty() {
+        json_map.insert("file".into(), serde_json::Value::Object(file_map));
+    }
+    if let Some(code) = exit_code {
+        json_map.insert("exit_code".into(), serde_json::Value::Number(code.into()));
+    }
+    serde_json::Value::Object(json_map)
+}
+
 impl CachingBackend for HoneycombBackend {
     fn name(&self) -> &'static str {
         return "backend";
     }
 
-    fn write(&self, inputs_bundle: &HashBundle, output_bundle: &HashBundle) -> Result<()> {
+    fn write(&self, inputs_bundle: &HashBundle, output_bundle: &OutputHashBundle) -> Result<()> {
         let mut map = serde_json::Map::new();
         map.insert("trace.trace_id".into(), self.trace_id.clone().into());
         map.insert("trace.span_id".into(), self.capsule_id.clone().into());
@@ -68,7 +98,7 @@ impl CachingBackend for HoneycombBackend {
         if let Some(value) = &self.parent_id {
             map.insert("trace.parent_id".into(), value.clone().into());
         }
-        map.insert("outputs_hash_details".into(), hash_details_to_json(output_bundle));
+        map.insert("outputs_hash_details".into(), output_hash_details_to_json(output_bundle));
         map.insert("outputs_hash".into(), output_bundle.hash.clone().into());
         let client = reqwest::blocking::Client::new();
         client

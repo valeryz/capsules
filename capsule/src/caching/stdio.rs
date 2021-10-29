@@ -1,7 +1,7 @@
 use crate::caching::backend::CachingBackend;
 use anyhow::Result;
 
-use crate::iohashing::HashBundle;
+use crate::iohashing::{HashBundle, OutputHashBundle};
 
 pub struct StdioBackend {
     pub verbose_output: bool,
@@ -14,7 +14,7 @@ impl CachingBackend for StdioBackend {
     }
 
     #[allow(unused_variables)]
-    fn write(&self, inputs_bundle: &HashBundle, output_bundle: &HashBundle) -> Result<()> {
+    fn write(&self, inputs_bundle: &HashBundle, output_bundle: &OutputHashBundle) -> Result<()> {
         println!(
             "Capsule ID: '{}'. Inputs key: '{}'",
             self.capsule_id,
