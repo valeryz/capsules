@@ -1,6 +1,8 @@
 use anyhow;
 use anyhow::{Context, Result};
 
+use glob::glob;
+
 use crate::caching::backend::CachingBackend;
 use crate::config::Config;
 use crate::iohashing::*;
@@ -15,20 +17,25 @@ pub struct Capsule<'a> {
 
 impl<'a> Capsule<'a> {
     pub fn new(config: &'a Config, caching_backend: Box<dyn CachingBackend>) -> Self {
-        let mut capsule = Self {
+        Self {
             config,
             caching_backend,
             inputs: InputSet::default(),
             // outputs: OutputSet::default(),
-        };
+        }
+    }
 
-        for file in &config.input_files {
-            capsule.inputs.add_input(Input::File(file));
+    pub fn read_inputs(&mut self) -> Result<()> {
+        for file_pattern in &self.config.input_files {
+            for file in glob(&file_pattern.to_string_lossy())? {
+                let file = file?;
+                self.inputs.add_input(Input::File(file));
+            }
         }
-        for tool_tag in &config.tool_tags {
-            capsule.inputs.add_input(Input::ToolTag(tool_tag));
+        for tool_tag in &self.config.tool_tags {
+            self.inputs.add_input(Input::ToolTag(tool_tag));
         }
-        capsule
+        Ok(())
     }
 
     pub fn hash(&self) -> Result<String> {

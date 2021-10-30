@@ -7,13 +7,14 @@ use std::ffi::{OsStr, OsString};
 use std::fs::File;
 use std::io::Read;
 use std::os::unix::prelude::OsStrExt;
+use std::path::{Path, PathBuf};
 
 #[derive(PartialOrd, Ord, PartialEq, Eq, Debug)]
 pub enum Input<'a> {
     /// string uniquely defining the tool version (could be even the hash of its binary).    
     ToolTag(&'a OsString),
     /// Input file.
-    File(&'a OsString),
+    File(PathBuf),
 }
 
 /// Input set is the set of all inputs to the build step.
@@ -55,7 +56,7 @@ pub struct OutputSet<'a> {
 /// TODO(valeryz): Cache these in a parent process' memory by the
 /// output of stat(2), except atime, so that we don't have to read
 /// them twice during a single build process.
-fn file_hash(filename: &OsStr) -> Result<String> {
+fn file_hash(filename: &Path) -> Result<String> {
     const BUFSIZE: usize = 4096;
     let mut acc = Sha256::new();
     let mut f = File::open(filename).with_context(|| format!("Reading input file {:?}", filename))?;
@@ -136,7 +137,7 @@ mod tests {
     #[test]
     fn file_hash_test() -> Result<()> {
         let file = NamedTempFile::new()?;
-        let hash = file_hash(file.path().as_os_str())?;
+        let hash = file_hash(file.path())?;
         // Sha256 hash of an empty file.
         assert_eq!(hash, EMPTY_SHA256);
         Ok(())
@@ -144,7 +145,7 @@ mod tests {
 
     #[test]
     fn file_hash_nonexistent() {
-        assert!(file_hash(&OsString::from("/nonexistent-capsule-input")).is_err());
+        assert!(file_hash(Path::new("/nonexistent-capsule-input")).is_err());
     }
 
     #[test]
@@ -202,15 +203,13 @@ mod tests {
         file2.write("file2".as_bytes()).unwrap();
         file2.flush().unwrap();
         let mut input_set = InputSet::default();
-        let path1 = OsString::from(file1.path());
-        input_set.add_input(Input::File(&path1));
+        input_set.add_input(Input::File(file1.path().into()));
         // These hashes were obtained by manual manipulation files and `openssl sha256`
         assert_eq!(
             input_set.hash().unwrap(),
             "f409e4c7ae76997e69556daae6139bee1f02e4f618d3da8deea10bb35b6c0ebd"
         );
-        let path2 = OsString::from(file2.path());
-        input_set.add_input(Input::File(&path2));
+        input_set.add_input(Input::File(file2.path().into()));
         assert_eq!(
             input_set.hash().unwrap(),
             "a282f3da61a4bc322a8d31da6d30a0e924017962acbef2f6996b81709de8cdc3"
