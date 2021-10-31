@@ -106,11 +106,14 @@ impl<'a> InputSet<'a> {
         }
         // Sort inputs hashes by the hash value, but so that tool_tags come first.
         hash_bundle.hash_details.sort_by(|a, b| {
-            let cmp = a.0.cmp(&b.0);  // Tool_tag has priority over file
-            if cmp == Ordering::Equal {
-                a.1.cmp(&b.1)
+            if let Input::ToolTag(_) = a.0 {
+                if let Input::ToolTag(_) = b.0 {
+                    a.1.cmp(&b.1)
+                } else {
+                    Ordering::Less
+                }
             } else {
-                cmp
+                a.1.cmp(&b.1)
             }
         });
         let mut acc: Sha256 = Sha256::new();
