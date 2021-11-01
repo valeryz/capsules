@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use anyhow::Result;
 use capsule::caching::backend::CachingBackend;
 use capsule::caching::honeycomb;
@@ -20,14 +21,50 @@ fn capsule_main() -> Result<()> {
     let backend: Box<dyn CachingBackend> = match config.backend {
         Backend::Stdio => Box::new(stdio::StdioBackend {
             verbose_output: config.verbose,
+            capsule_id: config
+                .capsule_id
+                .as_ref()
+                .ok_or(anyhow!("no capsule_id"))?
+                .to_string_lossy()
+                .into(),
         }),
-        Backend::Honeycomb => Box::new(honeycomb::HoneycombBackend {}),
+        Backend::Honeycomb => Box::new(honeycomb::HoneycombBackend {
+            dataset: config
+                .honeycomb_dataset
+                .clone()
+                .ok_or(anyhow!("Honeycomb dataset not specified"))?
+                .to_string_lossy()
+                .into_owned(),
+            honeycomb_token: config
+                .honeycomb_token
+                .clone()
+                .ok_or(anyhow!("Honeycomb Token not specified"))?
+                .to_string_lossy()
+                .into_owned(),
+            capsule_id: config
+                .capsule_id
+                .clone()
+                .ok_or(anyhow!("Capsule_id is unknown"))?
+                .to_string_lossy()
+                .into_owned(),
+            trace_id: config
+                .honeycomb_trace_id
+                .clone()
+                .ok_or(anyhow!("Honeycomb Trace ID is not specified"))?
+                .to_string_lossy()
+                .into_owned(),
+            parent_id: config.honeycomb_parent_id.as_ref().map(|x| x.to_string_lossy().into()),
+        }),
     };
-    let capsule = Capsule::new(&config, backend);
+    let mut capsule = Capsule::new(&config, backend);
+    capsule.read_inputs()?;
     capsule.write_cache()
 }
 
 fn main() -> Result<()> {
     capsule_main().unwrap_or_else(|e| eprintln!("Capsule error: {:#}", e));
+    // TODO: this goes away! - or maybe not!
     wrapper::execute()
+
+    // TODO: pass through the exit code from the wrapped program.
 }

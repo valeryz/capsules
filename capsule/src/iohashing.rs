@@ -1,18 +1,19 @@
 use anyhow;
 use anyhow::{Context, Result};
-use bytes::Bytes;
+use sha2::{Digest, Sha256};
+use std::cmp::Ordering;
+use std::ffi::{OsStr, OsString};
 use std::fs::File;
 use std::io::Read;
 use std::os::unix::prelude::OsStrExt;
-use sha2::{Digest, Sha256};
-use std::ffi::{OsStr, OsString};
+use std::path::{Path, PathBuf};
 
 #[derive(PartialOrd, Ord, PartialEq, Eq, Debug)]
 pub enum Input<'a> {
-    /// Input file.
-    File(&'a OsString),
     /// string uniquely defining the tool version (could be even the hash of its binary).    
     ToolTag(&'a OsString),
+    /// Input file.
+    File(PathBuf),
 }
 
 /// Input set is the set of all inputs to the build step.
@@ -24,29 +25,7 @@ pub struct InputSet<'a> {
 #[derive(Debug, Default)]
 pub struct HashBundle<'a> {
     pub hash: String,
-    pub input_hashes: Vec<(&'a Input<'a>, String)>,
-}
-
-// TODO: should we also add exec bit?
-#[derive(PartialOrd, Ord, PartialEq, Eq)]
-pub struct FileOutput<'a> {
-    filename: &'a OsString,
-    present: bool,
-    contents: Bytes,
-}
-
-#[derive(PartialOrd, Ord, PartialEq, Eq)]
-pub enum Output<'a> {
-    File(&'a FileOutput<'a>),
-    Stdout(&'a OsString),
-    Stderr(&'a OsString),
-    Log(&'a FileOutput<'a>),
-}
-
-/// Output set is the set of all process outputs.
-#[derive(Default)]
-pub struct OutputSet<'a> {
-    pub outputs: Vec<(Output<'a>, bool)>, // The bool indicates whether we store this output in the cache.
+    pub hash_details: Vec<(&'a Input<'a>, String)>,
 }
 
 /// Returns the hash of the given file.
@@ -54,11 +33,10 @@ pub struct OutputSet<'a> {
 /// TODO(valeryz): Cache these in a parent process' memory by the
 /// output of stat(2), except atime, so that we don't have to read
 /// them twice during a single build process.
-fn file_hash(filename: &OsStr) -> Result<String> {
+fn file_hash(filename: &Path) -> Result<String> {
     const BUFSIZE: usize = 4096;
     let mut acc = Sha256::new();
-    let mut f =
-        File::open(filename).with_context(|| format!("Reading input file {:?}", filename))?;
+    let mut f = File::open(filename).with_context(|| format!("Reading input file {:?}", filename))?;
     let mut buf: [u8; BUFSIZE] = [0; BUFSIZE];
     loop {
         let rd = f.read(&mut buf)?;
@@ -75,6 +53,16 @@ fn string_hash(s: &OsStr) -> String {
     acc.update(s.as_bytes());
     format!("{:x}", acc.finalize())
 }
+
+/// Helper function for both input and output hash finalization.
+fn bundle_hash<T>(hash_details: &Vec<(T, String)>) -> String {
+    let mut acc: Sha256 = Sha256::new();
+    for hash in hash_details.iter() {
+        acc.update(&hash.1);
+    }
+    format!("{:x}", acc.finalize())
+}
+
 
 impl<'a> InputSet<'a> {
     /// Returns the HEX string of the hash of the whole input set.
@@ -94,20 +82,29 @@ impl<'a> InputSet<'a> {
         for input in &self.inputs {
             match input {
                 Input::File(s) => {
-                    hash_bundle.input_hashes.push((input, format!("File{}", file_hash(s)?)));
+                    hash_bundle.hash_details.push((input, format!("File{}", file_hash(s)?)));
                 }
                 Input::ToolTag(s) => {
-                    hash_bundle.input_hashes.push((input, format!("ToolTag{}", string_hash(s))));
+                    hash_bundle
+                        .hash_details
+                        .push((input, format!("ToolTag{}", string_hash(s))));
                 }
             }
         }
-        // Sort inputs hashes by the hash value.
-        hash_bundle.input_hashes.sort_by(|a, b| a.1.cmp(&b.1));
-        let mut acc: Sha256 = Sha256::new();
-        for hash in hash_bundle.input_hashes.iter() {
-            acc.update(&hash.1);
-        }
-        hash_bundle.hash = format!("{:x}", acc.finalize());
+        // Sort inputs hashes by the hash value, but so that tool_tags come first.
+        // This is needed so that when we cap our JSON, we could still see tool_tags.
+        hash_bundle.hash_details.sort_by(|a, b| {
+            if let Input::ToolTag(_) = a.0 {
+                if let Input::ToolTag(_) = b.0 {
+                    a.1.cmp(&b.1)
+                } else {
+                    Ordering::Less
+                }
+            } else {
+                a.1.cmp(&b.1)
+            }
+        });
+        hash_bundle.hash = bundle_hash(&hash_bundle.hash_details);
         Ok(hash_bundle)
     }
 
@@ -116,6 +113,81 @@ impl<'a> InputSet<'a> {
     }
 }
 
+// TODO: should we also add exec bit? or whole UNIX permissions?
+#[derive(PartialOrd, Ord, PartialEq, Eq, Debug)]
+pub struct FileOutput<'a> {
+    pub filename: &'a OsString,
+    pub present: bool,
+    // TODO[bluepill]: add file contents, which would stored in the cache.
+}
+
+#[derive(PartialOrd, Ord, PartialEq, Eq, Debug)]
+pub enum Output<'a> {
+    // TODO: to be handled in placebo/blue pill.
+    File(&'a FileOutput<'a>),
+    ExitCode(usize),
+    // TODO[bluepill]: to be handled in the future.
+    Stdout(&'a OsString),
+    Stderr(&'a OsString),
+    Log(&'a FileOutput<'a>),
+}
+
+#[derive(Debug, Default)]
+pub struct OutputHashBundle<'a> {
+    pub hash: String,
+    pub hash_details: Vec<(&'a Output<'a>, String)>,
+}
+
+/// Output set is the set of all process outputs.
+#[derive(Default)]
+pub struct OutputSet<'a> {
+    pub outputs: Vec<Output<'a>>,
+}
+
+impl<'a> OutputSet<'a> {
+    /// Returns the HEX string of the hash of the whole input set.
+    ///
+    /// We calculate the whole hash bundle, and discard the separate hashes.
+    pub fn hash(&'a self) -> Result<String> {
+        self.hash_bundle().map(|x| x.hash)
+    }
+
+    /// Returns the HEX string of the hash of the files in the input set, and the total hash.
+    ///
+    /// It does this by calculating a SHA256 hash of all SHA256 hashes of inputs (being either file
+    /// or tool tag) sorted by the values of the hashes themselves.
+    pub fn hash_bundle(&'a self) -> Result<OutputHashBundle<'a>> {
+        // Calculate the hash of the input set independently of the order.
+        let mut hash_bundle = OutputHashBundle::default();
+        for output in &self.outputs {
+            match output {
+                Output::File(file_output) => {
+                    hash_bundle.hash_details.push(
+                        (output,
+                         if file_output.present {
+                             format!("File{}", file_hash(Path::new(file_output.filename))?)
+                         } else {
+                             "FileNonExistent".to_string()
+                         }))
+                }
+                Output::ExitCode(code) => {
+                    hash_bundle
+                        .hash_details
+                        .push((output, format!("ExitCode{}", code)));
+                }
+                _ => { }
+            }
+        }
+        // Sort inputs hashes by the hash value.
+        hash_bundle.hash_details.sort_by(|a, b| a.1.cmp(&b.1));
+        hash_bundle.hash = bundle_hash(&hash_bundle.hash_details);
+        Ok(hash_bundle)
+    }
+
+    pub fn add_output(&mut self, output: Output<'a>) {
+        self.outputs.push(output)
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -123,13 +195,12 @@ mod tests {
     use std::io::Write;
     use tempfile::NamedTempFile;
 
-    const EMPTY_SHA256: &'static str =
-        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+    const EMPTY_SHA256: &'static str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
     #[test]
     fn file_hash_test() -> Result<()> {
         let file = NamedTempFile::new()?;
-        let hash = file_hash(file.path().as_os_str())?;
+        let hash = file_hash(file.path())?;
         // Sha256 hash of an empty file.
         assert_eq!(hash, EMPTY_SHA256);
         Ok(())
@@ -137,7 +208,7 @@ mod tests {
 
     #[test]
     fn file_hash_nonexistent() {
-        assert!(file_hash(&OsString::from("/nonexistent-capsule-input")).is_err());
+        assert!(file_hash(Path::new("/nonexistent-capsule-input")).is_err());
     }
 
     #[test]
@@ -183,9 +254,8 @@ mod tests {
         let bundle1 = input_set1.hash_bundle().unwrap();
         let bundle2 = input_set2.hash_bundle().unwrap();
         assert_eq!(bundle1.hash, bundle2.hash);
-        assert_eq!(bundle1.input_hashes, bundle2.input_hashes);
+        assert_eq!(bundle1.hash_details, bundle2.hash_details);
     }
-
 
     #[test]
     fn test_input_set_file() {
@@ -196,15 +266,13 @@ mod tests {
         file2.write("file2".as_bytes()).unwrap();
         file2.flush().unwrap();
         let mut input_set = InputSet::default();
-        let path1 = OsString::from(file1.path());
-        input_set.add_input(Input::File(&path1));
+        input_set.add_input(Input::File(file1.path().into()));
         // These hashes were obtained by manual manipulation files and `openssl sha256`
         assert_eq!(
             input_set.hash().unwrap(),
             "f409e4c7ae76997e69556daae6139bee1f02e4f618d3da8deea10bb35b6c0ebd"
         );
-        let path2 = OsString::from(file2.path());
-        input_set.add_input(Input::File(&path2));
+        input_set.add_input(Input::File(file2.path().into()));
         assert_eq!(
             input_set.hash().unwrap(),
             "a282f3da61a4bc322a8d31da6d30a0e924017962acbef2f6996b81709de8cdc3"

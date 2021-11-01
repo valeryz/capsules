@@ -1,5 +1,6 @@
 use anyhow::{bail, Context, Result};
 use clap::{App, Arg};
+use derivative::Derivative;
 use itertools;
 use serde::Deserialize;
 use std::collections::BTreeMap;
@@ -21,10 +22,13 @@ pub enum Backend {
     Honeycomb,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Derivative)]
+#[derivative(Default)]
 pub struct Config {
+    #[derivative(Default(value = "Milestone::Placebo"))]
     pub milestone: Milestone,
     pub verbose: bool,
+    #[derivative(Default(value = "Backend::Stdio"))]
     pub backend: Backend,
     pub capsule_id: Option<OsString>,
     pub input_files: Vec<OsString>,
@@ -33,6 +37,10 @@ pub struct Config {
     pub capture_stdout: Option<bool>,
     pub capture_stderr: Option<bool>,
     pub command_to_run: Vec<OsString>,
+    pub honeycomb_token: Option<OsString>,
+    pub honeycomb_dataset: Option<OsString>,
+    pub honeycomb_trace_id: Option<OsString>,
+    pub honeycomb_parent_id: Option<OsString>,
 }
 
 impl std::ops::Deref for Config {
@@ -40,23 +48,6 @@ impl std::ops::Deref for Config {
 
     fn deref(&self) -> &Self::Target {
         &self.capsule_id
-    }
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            milestone: Milestone::Placebo,
-            verbose: false,
-            backend: Backend::Stdio,
-            capsule_id: None,
-            input_files: vec![],
-            tool_tags: vec![],
-            output_files: vec![],
-            capture_stdout: Some(false),
-            capture_stderr: Some(false),
-            command_to_run: vec![],
-        }
     }
 }
 
@@ -85,6 +76,12 @@ struct StringConfig {
 
     #[serde(default)]
     pub capture_stderr: Option<bool>,
+
+    #[serde(default)]
+    pub honeycomb_token: Option<String>,
+
+    #[serde(default)]
+    pub honeycomb_dataset: Option<String>,
 }
 
 impl From<StringConfig> for Config {
@@ -97,13 +94,15 @@ impl From<StringConfig> for Config {
             output_files: config.output_files.iter().map(OsString::from).collect(),
             capture_stdout: config.capture_stdout,
             capture_stderr: config.capture_stderr,
+            honeycomb_token: config.honeycomb_token.map(|x| x.into()),
+            honeycomb_dataset: config.honeycomb_dataset.map(|x| x.into()),
             ..Config::default()
         }
     }
 }
 
 impl Config {
-    // Merge one config (e.g. Capsule.toml) into another (~/.capsule.toml)
+    // Merge one config (e.g. Capsule.toml) into another (~/.capsules.toml)
     // It destroys the argument.
     pub fn merge(&mut self, config: &mut Self) {
         if self.capsule_id.is_none() {
@@ -117,18 +116,20 @@ impl Config {
         self.tool_tags.append(&mut config.tool_tags);
         self.capture_stdout = config.capture_stdout;
         self.capture_stderr = config.capture_stderr;
+        if self.honeycomb_dataset.is_none() {
+            self.honeycomb_dataset = config.honeycomb_dataset.take();
+        }
+        if self.honeycomb_token.is_none() {
+            self.honeycomb_token = config.honeycomb_token.take();
+        }
     }
 
-    pub fn new<I, T>(
-        cmdline_args: I,
-        default_toml: Option<&Path>,
-        current_toml: Option<&Path>,
-    ) -> Result<Self>
+    pub fn new<I, T>(cmdline_args: I, default_toml: Option<&Path>, current_toml: Option<&Path>) -> Result<Self>
     where
         I: IntoIterator<Item = T>,
         T: Into<OsString> + Clone,
     {
-        // Read the defaults TOML (usually from ~/.capsule.toml).
+        // Read the defaults TOML (usually from ~/.capsules.toml).
         let mut config = Self::default();
         if let Some(default_toml) = default_toml {
             if let Ok(contents) = std::fs::read_to_string(default_toml) {
@@ -210,6 +211,37 @@ impl Config {
                     .long("verbose")
                     .takes_value(false),
             )
+            .arg(
+                Arg::new("backend")
+                    .short('b')
+                    .long("backend")
+                    .about("which backend to use")
+                    .possible_values(&["stdio", "honeycomb"]),
+            )
+            .arg(
+                Arg::new("honeycomb_dataset")
+                    .long("honeycomb_dataset")
+                    .about("Honeycomb Dataset")
+                    .takes_value(true),
+            )
+            .arg(
+                Arg::new("honeycomb_token")
+                    .long("honeycomb_token")
+                    .about("Honeycomb Access Token")
+                    .takes_value(true),
+            )
+            .arg(
+                Arg::new("honeycomb_trace_id")
+                    .long("honeycomb_trace_id")
+                    .about("Honeycomb Trace ID")
+                    .takes_value(true),
+            )
+            .arg(
+                Arg::new("honeycomb_parent_id")
+                    .long("honeycomb_parent_id")
+                    .about("Honeycomb trace span parent ID")
+                    .takes_value(true),
+            )
             .arg(Arg::new("command_to_run").last(true));
 
         let match_sources = [
@@ -217,9 +249,7 @@ impl Config {
             // which has the default args, not listed on command line.
             arg_matches.clone().get_matches_from(itertools::chain(
                 ["capsule"],
-                env::var("CAPSULE_ARGS")
-                    .unwrap_or_default()
-                    .split_whitespace(),
+                env::var("CAPSULE_ARGS").unwrap_or_default().split_whitespace(),
             )),
             // Then we look at the actual command line args.
             arg_matches.clone().get_matches_from(cmdline_args),
@@ -275,6 +305,23 @@ impl Config {
             if let Some(command) = matches.values_of_os("command_to_run") {
                 config.command_to_run = command.map(|x| x.to_os_string()).collect();
             }
+            if let Some(backend) = matches.value_of_os("backend") {
+                if backend == "honeycomb" {
+                    config.backend = Backend::Honeycomb;
+                }
+            }
+            if let Some(value) = matches.value_of_os("honeycomb_dataset") {
+                config.honeycomb_dataset = Some(value.into());
+            }
+            if let Some(value) = matches.value_of_os("honeycomb_token") {
+                config.honeycomb_token = Some(value.into());
+            }
+            if let Some(value) = matches.value_of_os("honeycomb_trace_id") {
+                config.honeycomb_trace_id = Some(value.into());
+            }
+            if let Some(value) = matches.value_of_os("honeycomb_parent_id") {
+                config.honeycomb_parent_id = Some(value.into());
+            }
         }
 
         if config.command_to_run.is_empty() {
@@ -309,12 +356,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_command_line_2() {
-        let config = Config::new(
-            vec!["placebo", "-c", "my_capsule", "--", "/bin/echo"],
-            None,
-            None,
-        )
-        .unwrap();
+        let config = Config::new(vec!["placebo", "-c", "my_capsule", "--", "/bin/echo"], None, None).unwrap();
         assert_eq!(config.capsule_id.unwrap(), "my_capsule");
         assert_eq!(config.command_to_run[0], "/bin/echo");
     }
@@ -379,9 +421,7 @@ mod tests {
            tool_tags = ["docker-ABCDEF"]
         "#};
         println!("Config file:\n{}", config_contents);
-        default_config_file
-            .write(config_contents.as_bytes())
-            .unwrap();
+        default_config_file.write(config_contents.as_bytes()).unwrap();
         default_config_file.flush().unwrap();
 
         let mut current_config_file = NamedTempFile::new().unwrap();
@@ -392,9 +432,7 @@ mod tests {
            input_files=["/etc/passwd", "/nonexistent"]
            tool_tags = ["docker-1234"]
         "#};
-        current_config_file
-            .write(config_contents.as_bytes())
-            .unwrap();
+        current_config_file.write(config_contents.as_bytes()).unwrap();
         current_config_file.flush().unwrap();
 
         let config = Config::new(
@@ -419,9 +457,7 @@ mod tests {
            input_files=["/etc/passwd", "/nonexistent"]
            tool_tags = ["docker-1234"]
         "#};
-        current_config_file
-            .write(config_contents.as_bytes())
-            .unwrap();
+        current_config_file.write(config_contents.as_bytes()).unwrap();
         current_config_file.flush().unwrap();
 
         let config = Config::new(
@@ -444,9 +480,7 @@ mod tests {
            output_files=["compiled_binary"]
            input_files=["/etc/passwd", "/nonexistent"]
         "#};
-        current_config_file
-            .write(config_contents.as_bytes())
-            .unwrap();
+        current_config_file.write(config_contents.as_bytes()).unwrap();
         current_config_file.flush().unwrap();
 
         let config = Config::new(
@@ -472,9 +506,7 @@ mod tests {
            output_files=["compiled_binary"]
            input_files=["/etc/passwd", "/nonexistent"]
         "#};
-        current_config_file
-            .write(config_contents.as_bytes())
-            .unwrap();
+        current_config_file.write(config_contents.as_bytes()).unwrap();
         current_config_file.flush().unwrap();
 
         Config::new(
