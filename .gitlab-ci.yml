@@ -5,7 +5,7 @@ stages:
 
 build-test-debug-stable:
   stage: build
-  image: rust:latest
+  image: registry.gitlab.com/dfinity-lab/infra-group/capsules/rust-minio:latest
   script: |
     set -eux
     cd capsule
@@ -14,7 +14,7 @@ build-test-debug-stable:
 
 build-test-debug-nightly:
   stage: build
-  image: rustlang/rust:nightly
+  image: registry.gitlab.com/dfinity-lab/infra-group/capsules/rust-minio:nightly
   script: |
     set -eux
     cd capsule
@@ -24,7 +24,7 @@ build-test-debug-nightly:
 
 build-release:
   stage: build
-  image: rust:latest
+  image: registry.gitlab.com/dfinity-lab/infra-group/capsules/rust-minio:latest
   script: |
     cd capsule 
     cargo build --package capsule --release
