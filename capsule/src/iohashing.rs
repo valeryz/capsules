@@ -116,7 +116,7 @@ impl<'a> InputSet<'a> {
 // TODO: should we also add exec bit? or whole UNIX permissions?
 #[derive(PartialOrd, Ord, PartialEq, Eq, Debug)]
 pub struct FileOutput<'a> {
-    pub filename: &'a OsString,
+    pub filename: &'a Path,
     pub present: bool,
     // TODO[bluepill]: add file contents, which would stored in the cache.
 }
