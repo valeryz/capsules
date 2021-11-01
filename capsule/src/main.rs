@@ -56,7 +56,8 @@ fn capsule_main() -> Result<()> {
             parent_id: config.honeycomb_parent_id.as_ref().map(|x| x.to_string_lossy().into()),
         }),
     };
-    let capsule = Capsule::new(&config, backend);
+    let mut capsule = Capsule::new(&config, backend);
+    capsule.read_inputs()?;
     capsule.write_cache()
 }
 

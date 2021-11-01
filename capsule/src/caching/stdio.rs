@@ -3,6 +3,7 @@ use anyhow::Result;
 
 use crate::iohashing::HashBundle;
 
+#[derive(Default)]
 pub struct StdioBackend {
     pub verbose_output: bool,
     pub capsule_id: String,
