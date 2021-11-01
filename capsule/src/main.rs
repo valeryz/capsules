@@ -5,22 +5,16 @@ use capsule::caching::honeycomb;
 use capsule::caching::stdio;
 use capsule::capsule::Capsule;
 use capsule::config::{Backend, Config};
+use capsule::wrapper;
 use std::env;
 use std::path::Path;
-use std::process::Command;
-use std::process::ExitStatus;
+
+use std::process;
+use std::process::{Command, ExitStatus};
 
 static USAGE: &'static str = "Usage: capsule <capsule arguments ...> -- command [<arguments>]";
 
-fn create_capsule() -> Result<Capsule<'static>> {
-    let default_toml = std::env::var("HOME")
-        .ok()
-        .and_then(|home| Some(home + "/.capsules.toml"));
-    let config = Config::new(
-        env::args(),
-        default_toml.as_ref().map(Path::new),
-        Some(Path::new("Capsule.toml").as_ref()),
-    )?;
+fn create_capsule(config: &Config) -> Result<Capsule<'_>> {
     let backend: Box<dyn CachingBackend> = match config.backend {
         Backend::Stdio => Box::new(stdio::StdioBackend {
             verbose_output: config.verbose,
@@ -59,10 +53,7 @@ fn create_capsule() -> Result<Capsule<'static>> {
             parent_id: config.honeycomb_parent_id.as_ref().map(|x| x.to_string_lossy().into()),
         }),
     };
-    //let mut capsule = Capsule::new(&config, backend);
-    //capsule.read_inputs()?;
-    //capsule.write_cache()
-    Ok(Capsule::new(Box::new(config), backend))
+    Ok(Capsule::new(config, backend))
 }
 
 fn execute_command() -> Result<ExitStatus> {
@@ -89,8 +80,19 @@ fn execute_command() -> Result<ExitStatus> {
 }
 
 fn main() -> Result<()> {
-    let _capsule = create_capsule();
+    let default_toml = std::env::var("HOME")
+        .ok()
+        .and_then(|home| Some(home + "/.capsules.toml"));
+    let config = Config::new(
+        env::args(),
+        default_toml.as_ref().map(Path::new),
+        Some(Path::new("Capsule.toml").as_ref()),
+    )?;
+    let mut capsule = create_capsule(&config)?;
+    capsule.read_inputs()?;
     // TODO:
+
+    // TODO: calculate the inputs (now being done in write_cache, extract from there).
 
     let result = execute_command();
 
@@ -100,11 +102,26 @@ fn main() -> Result<()> {
             if exit_status.success() {
 
             }
+            // TODO: calculate the outputs, create a bundle of output hashes, and write.
         },
         Err(_err) => {
             // TODO:
         }
     }
 
-    Ok(())
+    // TODO: remoove this after the functionality moved above.
+    let result = capsule.write_cache();
+
+    match result {
+        Ok(code) => process::exit(code),
+        Err(err) => {
+            eprintln!("Capsule error: {:#}", err);
+            if !capsule.program_run {
+                wrapper::execute_legacy().expect("Execution of wrapped program failed");
+                unreachable!()
+            } else {
+                Err(err)
+            }
+        }
+    }
 }

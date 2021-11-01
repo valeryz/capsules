@@ -8,15 +8,19 @@ use crate::config::Config;
 use crate::iohashing::*;
 
 pub struct Capsule<'a> {
-    config: Box<Config>,
+    /// Indicates whether the program has been run within the capsule.
+    pub program_run: bool,
+
+    config: &'a Config,
     caching_backend: Box<dyn CachingBackend>,
     inputs: InputSet<'a>,
     outputs: OutputSet<'a>,
 }
 
 impl<'a> Capsule<'a> {
-    pub fn new(config: Box<Config>, caching_backend: Box<dyn CachingBackend>) -> Self {
+    pub fn new(config: &'a Config, caching_backend: Box<dyn CachingBackend>) -> Self {
         Self {
+            program_run: false,
             config,
             caching_backend,
             inputs: InputSet::default(),
@@ -62,19 +66,23 @@ impl<'a> Capsule<'a> {
         self.inputs.hash()
     }
 
-    pub fn write_cache(&self) -> Result<()> {
+    pub fn write_cache(&mut self) -> Result<i32> {
         let capsule_id = self.config.capsule_id.as_ref().expect("capsule_id must be specified");
         let input_bundle = self
             .inputs
             .hash_bundle()
             .with_context(|| format!("Hashing inputs of capsule '{:?}'", capsule_id))?;
 
+        // TODO: call the wrapped program.
+        self.program_run = true;
+
         let output_bundle = self
             .outputs
             .hash_bundle()
             .with_context(|| format!("Hashing outputs of capsule '{:?}'", capsule_id))?;
 
-        self.caching_backend.write(&input_bundle, &output_bundle)
+        self.caching_backend.write(&input_bundle, &output_bundle)?;
+        Ok(0)  // TODO: change this to the return code for the program.
     }
 }
 
