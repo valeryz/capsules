@@ -5,11 +5,14 @@ use capsule::caching::honeycomb;
 use capsule::caching::stdio;
 use capsule::capsule::Capsule;
 use capsule::config::{Backend, Config};
-use capsule::wrapper;
 use std::env;
 use std::path::Path;
+use std::process::Command;
+use std::process::ExitStatus;
 
-fn capsule_main() -> Result<()> {
+static USAGE: &'static str = "Usage: capsule <capsule arguments ...> -- command [<arguments>]";
+
+fn create_capsule() -> Result<Capsule<'static>> {
     let default_toml = std::env::var("HOME")
         .ok()
         .and_then(|home| Some(home + "/.capsules.toml"));
@@ -56,15 +59,52 @@ fn capsule_main() -> Result<()> {
             parent_id: config.honeycomb_parent_id.as_ref().map(|x| x.to_string_lossy().into()),
         }),
     };
-    let mut capsule = Capsule::new(&config, backend);
-    capsule.read_inputs()?;
-    capsule.write_cache()
+    //let mut capsule = Capsule::new(&config, backend);
+    //capsule.read_inputs()?;
+    //capsule.write_cache()
+    Ok(Capsule::new(Box::new(config), backend))
+}
+
+fn execute_command() -> Result<ExitStatus> {
+    let mut args = env::args();
+    let argv0 = &mut args.next();
+    if argv0.is_none() {
+        return Err(anyhow!(USAGE));
+    }
+    // Consume the rest of the arguments until we have the -- part
+    for arg in args.by_ref() {
+        if arg == "--" {
+            break;
+        }
+    }
+
+    let args: Vec<String> = args.collect();
+    let s: String = args.join(" ");
+    let mut p = Command::new("/bin/bash")
+        .arg("-c")
+        .arg(s)
+        .spawn()
+        .expect("failed to execute process");
+    Ok(p.wait()?)
 }
 
 fn main() -> Result<()> {
-    capsule_main().unwrap_or_else(|e| eprintln!("Capsule error: {:#}", e));
-    // TODO: this goes away! - or maybe not!
-    wrapper::execute()
+    let _capsule = create_capsule();
+    // TODO:
 
-    // TODO: pass through the exit code from the wrapped program.
+    let result = execute_command();
+
+    match result {
+        Ok(exit_status) => {
+            // TODO:
+            if exit_status.success() {
+
+            }
+        },
+        Err(_err) => {
+            // TODO:
+        }
+    }
+
+    Ok(())
 }

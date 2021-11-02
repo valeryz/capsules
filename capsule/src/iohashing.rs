@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 
 #[derive(PartialOrd, Ord, PartialEq, Eq, Debug)]
 pub enum Input<'a> {
-    /// string uniquely defining the tool version (could be even the hash of its binary).    
+    /// string uniquely defining the tool version (could be even the hash of its binary).
     ToolTag(&'a OsString),
     /// Input file.
     File(PathBuf),
@@ -115,21 +115,20 @@ impl<'a> InputSet<'a> {
 
 // TODO: should we also add exec bit? or whole UNIX permissions?
 #[derive(PartialOrd, Ord, PartialEq, Eq, Debug)]
-pub struct FileOutput<'a> {
-    pub filename: &'a Path,
+pub struct FileOutput {
+    pub filename: PathBuf,
     pub present: bool,
     // TODO[bluepill]: add file contents, which would stored in the cache.
 }
 
 #[derive(PartialOrd, Ord, PartialEq, Eq, Debug)]
 pub enum Output<'a> {
-    // TODO: to be handled in placebo/blue pill.
-    File(&'a FileOutput<'a>),
+    File(FileOutput),
     ExitCode(usize),
     // TODO[bluepill]: to be handled in the future.
     Stdout(&'a OsString),
     Stderr(&'a OsString),
-    Log(&'a FileOutput<'a>),
+    Log(&'a FileOutput),
 }
 
 #[derive(Debug, Default)]
@@ -165,7 +164,7 @@ impl<'a> OutputSet<'a> {
                     hash_bundle.hash_details.push(
                         (output,
                          if file_output.present {
-                             format!("File{}", file_hash(file_output.filename)?)
+                             format!("File{}", file_hash(file_output.filename.as_path())?)
                          } else {
                              "FileNonExistent".to_string()
                          }))
