@@ -42,7 +42,7 @@ pub struct Config {
     pub honeycomb_trace_id: Option<OsString>,
     pub honeycomb_parent_id: Option<OsString>,
 
-    // values of --honeycomb-kv flag, to be accessed via a method.
+    // values of --honeycomb_kv flag, to be accessed via a method.
     honeycomb_kv: Vec<OsString>,
 }
 
@@ -243,14 +243,14 @@ impl Config {
                 Arg::new("honeycomb_parent_id")
                     .long("honeycomb_parent_id")
                     .about("Honeycomb trace span parent ID")
-                    .takes_value(true)
-                    .multiple_occurrences(true),
+                    .takes_value(true),
             )
             .arg(
                 Arg::new("honeycomb_kv")
                     .long("honeycomb_kv")
                     .about("Honeycomb Extra Key-Value")
-                    .takes_value(true),
+                    .takes_value(true)
+                    .multiple_occurrences(true),
             )
             .arg(Arg::new("command_to_run").last(true));
 
@@ -564,6 +564,34 @@ mod tests {
         assert_eq!(
             config.get_honeycomb_kv().unwrap(),
             vec![("branch".to_owned(), "master".to_owned())]
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_honeycomb_kv_2() {
+        let config = Config::new(
+            vec![
+                "placebo",
+                "-c",
+                "my_capsule",
+                "--honeycomb_kv",
+                "branch=master",
+                "--honeycomb_kv",
+                "foo=bar",
+                "--",
+                "/bin/echo",
+            ],
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            config.get_honeycomb_kv().unwrap(),
+            vec![
+                ("branch".to_owned(), "master".to_owned()),
+                ("foo".to_owned(), "bar".to_owned())
+            ]
         );
         assert_eq!(config.capsule_id.unwrap(), "my_capsule");
         assert_eq!(config.command_to_run[0], "/bin/echo");
