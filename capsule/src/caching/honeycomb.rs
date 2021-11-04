@@ -19,6 +19,9 @@ pub struct HoneycombBackend {
 
     /// Honeycomb Parent trace ID.
     pub parent_id: Option<String>,
+
+    /// Extra Key-values.
+    pub extra_kv: Vec<(String, String)>,
 }
 
 /// Max number of JSON entries in the dict. We need to cap it so that
@@ -100,6 +103,9 @@ impl CachingBackend for HoneycombBackend {
         }
         map.insert("outputs_hash_details".into(), output_hash_details_to_json(output_bundle));
         map.insert("outputs_hash".into(), output_bundle.hash.clone().into());
+        for (key, value) in &self.extra_kv {
+            map.insert(key.to_owned(), value.to_owned().into());
+        }
         let client = reqwest::blocking::Client::new();
         client
             .post(format!("https://api.honeycomb.io/1/events/{}", self.dataset))
