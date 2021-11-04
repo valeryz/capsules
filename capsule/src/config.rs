@@ -46,14 +46,6 @@ pub struct Config {
     honeycomb_kv: Vec<OsString>,
 }
 
-impl std::ops::Deref for Config {
-    type Target = Option<OsString>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.capsule_id
-    }
-}
-
 // We use this struct for Toml deserialization, because Serde deserializes
 // OsString in a very weird way, therefore we deserialize into Strings,
 // later converting them into OsString.
@@ -595,5 +587,32 @@ mod tests {
         );
         assert_eq!(config.capsule_id.unwrap(), "my_capsule");
         assert_eq!(config.command_to_run[0], "/bin/echo");
+    }
+
+    #[test]
+    #[serial]
+    fn test_honeycomb_kv_empty() {
+        let config = Config::new(
+            vec![
+                "placebo",
+                "-c",
+                "my_capsule",
+                "--honeycomb_kv=foo=",
+                "--honeycomb_kv",
+                "bar=",
+                "--",
+                "/bin/echo",
+            ],
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            config.get_honeycomb_kv().unwrap(),
+            vec![
+                ("foo".to_owned(), "".to_owned()),
+                ("bar".to_owned(), "".to_owned())
+            ]
+        );
     }
 }
