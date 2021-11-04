@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use clap::{App, Arg};
 use derivative::Derivative;
 use itertools;
@@ -41,6 +41,9 @@ pub struct Config {
     pub honeycomb_dataset: Option<OsString>,
     pub honeycomb_trace_id: Option<OsString>,
     pub honeycomb_parent_id: Option<OsString>,
+
+    // values of --honeycomb-kv flag, to be accessed via a method.
+    honeycomb_kv: Vec<OsString>,
 }
 
 impl std::ops::Deref for Config {
@@ -240,6 +243,13 @@ impl Config {
                 Arg::new("honeycomb_parent_id")
                     .long("honeycomb_parent_id")
                     .about("Honeycomb trace span parent ID")
+                    .takes_value(true)
+                    .multiple_occurrences(true),
+            )
+            .arg(
+                Arg::new("honeycomb_kv")
+                    .long("honeycomb_kv")
+                    .about("Honeycomb Extra Key-Value")
                     .takes_value(true),
             )
             .arg(Arg::new("command_to_run").last(true));
@@ -322,6 +332,9 @@ impl Config {
             if let Some(value) = matches.value_of_os("honeycomb_parent_id") {
                 config.honeycomb_parent_id = Some(value.into());
             }
+            if let Some(values) = matches.values_of_os("honeycomb_kv") {
+                config.honeycomb_kv.extend(values.map(|x| x.to_owned()));
+            }
         }
 
         if config.command_to_run.is_empty() {
@@ -329,6 +342,19 @@ impl Config {
         }
 
         Ok(config)
+    }
+
+    pub fn get_honeycomb_kv(&self) -> Result<Vec<(String, String)>> {
+        self.honeycomb_kv
+            .iter()
+            .map(|value| {
+                value
+                    .to_str()
+                    .and_then(|value: &str| value.split_once('='))
+                    .map(|(a, b)| (a.to_owned(), b.to_owned()))
+            })
+            .collect::<Option<_>>()
+            .ok_or(anyhow!("Can't parse honeycomb_kv"))
     }
 }
 
@@ -357,6 +383,7 @@ mod tests {
     #[serial]
     fn test_command_line_2() {
         let config = Config::new(vec!["placebo", "-c", "my_capsule", "--", "/bin/echo"], None, None).unwrap();
+        assert_eq!(config.get_honeycomb_kv().unwrap(), vec![]);
         assert_eq!(config.capsule_id.unwrap(), "my_capsule");
         assert_eq!(config.command_to_run[0], "/bin/echo");
     }
@@ -515,5 +542,30 @@ mod tests {
             Some(current_config_file.path()),
         )
         .unwrap_err();
+    }
+
+    #[test]
+    #[serial]
+    fn test_honeycomb_kv() {
+        let config = Config::new(
+            vec![
+                "placebo",
+                "-c",
+                "my_capsule",
+                "--honeycomb_kv",
+                "branch=master",
+                "--",
+                "/bin/echo",
+            ],
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            config.get_honeycomb_kv().unwrap(),
+            vec![("branch".to_owned(), "master".to_owned())]
+        );
+        assert_eq!(config.capsule_id.unwrap(), "my_capsule");
+        assert_eq!(config.command_to_run[0], "/bin/echo");
     }
 }
