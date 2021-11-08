@@ -22,38 +22,27 @@ fn capsule_main() -> Result<()> {
         Backend::Stdio => Box::new(stdio::StdioBackend {
             verbose_output: config.verbose,
             capsule_id: config
-                .capsule_id
-                .as_ref()
-                .ok_or(anyhow!("no capsule_id"))?
-                .to_string_lossy()
-                .into(),
+                .capsule_id.clone()
+                .ok_or(anyhow!("no capsule_id"))?.clone(),
         }),
         Backend::Honeycomb => Box::new(honeycomb::HoneycombBackend {
             dataset: config
                 .honeycomb_dataset
                 .clone()
-                .ok_or(anyhow!("Honeycomb dataset not specified"))?
-                .to_string_lossy()
-                .into_owned(),
+                .ok_or(anyhow!("Honeycomb dataset not specified"))?,
             honeycomb_token: config
                 .honeycomb_token
                 .clone()
-                .ok_or(anyhow!("Honeycomb Token not specified"))?
-                .to_string_lossy()
-                .into_owned(),
+                .ok_or(anyhow!("Honeycomb Token not specified"))?,
             capsule_id: config
                 .capsule_id
                 .clone()
-                .ok_or(anyhow!("Capsule_id is unknown"))?
-                .to_string_lossy()
-                .into_owned(),
+                .ok_or(anyhow!("Capsule_id is unknown"))?,
             trace_id: config
                 .honeycomb_trace_id
                 .clone()
-                .ok_or(anyhow!("Honeycomb Trace ID is not specified"))?
-                .to_string_lossy()
-                .into_owned(),
-            parent_id: config.honeycomb_parent_id.as_ref().map(|x| x.to_string_lossy().into()),
+                .ok_or(anyhow!("Honeycomb Trace ID is not specified"))?,
+            parent_id: config.honeycomb_parent_id.clone(),
             extra_kv: config.get_honeycomb_kv()?,
         }),
     };

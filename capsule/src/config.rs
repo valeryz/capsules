@@ -8,54 +8,38 @@ use std::path::Path;
 use std::{env, ffi::OsString};
 use toml;
 
-#[derive(Debug)]
+#[derive(Debug, Derivative)]
+#[derivative(Default)]
 pub enum Milestone {
+    #[derivative(Default)]
     Placebo,
     BluePill,
     OragePill,
     RedPill,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Derivative)]
+#[derivative(Default)]
 pub enum Backend {
+    #[derivative(Default)]
     Stdio,
     Honeycomb,
 }
 
-#[derive(Debug, Derivative)]
+#[derive(Debug, Deserialize, Derivative)]
 #[derivative(Default)]
 pub struct Config {
-    #[derivative(Default(value = "Milestone::Placebo"))]
+    #[serde(skip)]
     pub milestone: Milestone,
+
+    #[serde(default)]
     pub verbose: bool,
-    #[derivative(Default(value = "Backend::Stdio"))]
+
+    #[serde(skip)]
     pub backend: Backend,
-    pub capsule_id: Option<OsString>,
-    pub input_files: Vec<OsString>,
-    pub tool_tags: Vec<OsString>,
-    pub output_files: Vec<OsString>,
-    pub capture_stdout: Option<bool>,
-    pub capture_stderr: Option<bool>,
-    pub command_to_run: Vec<OsString>,
-    pub honeycomb_token: Option<OsString>,
-    pub honeycomb_dataset: Option<OsString>,
-    pub honeycomb_trace_id: Option<OsString>,
-    pub honeycomb_parent_id: Option<OsString>,
 
-    // values of --honeycomb_kv flag, to be accessed via a method.
-    honeycomb_kv: Vec<OsString>,
-}
-
-// We use this struct for Toml deserialization, because Serde deserializes
-// OsString in a very weird way, therefore we deserialize into Strings,
-// later converting them into OsString.
-#[derive(Deserialize, Debug)]
-struct StringConfig {
     #[serde(default)]
     pub capsule_id: Option<String>,
-
-    #[serde(default)]
-    pub verbose: Option<bool>,
 
     #[serde(default)]
     pub input_files: Vec<String>,
@@ -73,27 +57,23 @@ struct StringConfig {
     pub capture_stderr: Option<bool>,
 
     #[serde(default)]
+    pub command_to_run: Vec<String>,
+
+    #[serde(default)]
     pub honeycomb_token: Option<String>,
 
     #[serde(default)]
     pub honeycomb_dataset: Option<String>,
-}
 
-impl From<StringConfig> for Config {
-    fn from(config: StringConfig) -> Self {
-        Config {
-            capsule_id: config.capsule_id.map(OsString::from),
-            verbose: config.verbose.unwrap_or(false),
-            input_files: config.input_files.iter().map(OsString::from).collect(),
-            tool_tags: config.tool_tags.iter().map(OsString::from).collect(),
-            output_files: config.output_files.iter().map(OsString::from).collect(),
-            capture_stdout: config.capture_stdout,
-            capture_stderr: config.capture_stderr,
-            honeycomb_token: config.honeycomb_token.map(|x| x.into()),
-            honeycomb_dataset: config.honeycomb_dataset.map(|x| x.into()),
-            ..Config::default()
-        }
-    }
+    #[serde(default)]
+    pub honeycomb_trace_id: Option<String>,
+
+    #[serde(default)]
+    pub honeycomb_parent_id: Option<String>,
+
+    // values of --honeycomb_kv flag, to be accessed via a method.
+    #[serde(default)]
+    honeycomb_kv: Vec<String>,
 }
 
 impl Config {
@@ -128,9 +108,9 @@ impl Config {
         let mut config = Self::default();
         if let Some(default_toml) = default_toml {
             if let Ok(contents) = std::fs::read_to_string(default_toml) {
-                let home_config = toml::from_str::<StringConfig>(&contents)
+                let home_config = toml::from_str::<Config>(&contents)
                     .with_context(|| format!("Parsing default config {:?}", default_toml))?;
-                config = Config::from(home_config);
+                config = home_config;
             }
         }
 
@@ -138,17 +118,7 @@ impl Config {
         let mut dir_config: BTreeMap<String, Config> = BTreeMap::new();
         if let Some(current_toml) = current_toml {
             if let Ok(contents) = std::fs::read_to_string(current_toml) {
-                match toml::from_str::<BTreeMap<String, StringConfig>>(&contents) {
-                    Ok(config) => {
-                        dir_config = config
-                            .into_iter()
-                            .map(|(key, value)| (key, Config::from(value)))
-                            .collect();
-                    }
-                    Err(e) => {
-                        bail!("Could not parse Capsules.toml: {}", e)
-                    }
-                }
+                dir_config = toml::from_str::<BTreeMap<String, Config>>(&contents)?;
             }
         }
 
@@ -258,7 +228,7 @@ impl Config {
         ];
 
         for matches in &match_sources {
-            if let Some(capsule_id) = matches.value_of_os("capsule_id") {
+            if let Some(capsule_id) = matches.value_of("capsule_id") {
                 config.capsule_id = Some(capsule_id.to_owned());
             }
         }
@@ -273,26 +243,23 @@ impl Config {
             }
         }
 
-        // Take capsule_is as String (we get lots of OsString here!)
-        let capsule_id: &OsString = config.capsule_id.as_ref().unwrap();
-        let capsule_id: OsString = capsule_id.clone();
-        let capsule_id: String = capsule_id.into_string().unwrap();
+        let capsule_id = config.capsule_id.as_ref().unwrap();
 
         // Dir_config can have many sections, relating to manu capsules.
         // We pick the onle related to the current capsule_id.
         // We call .remove() to take full ownership of the single_config.
-        if let Some(mut single_config) = dir_config.remove(&capsule_id) {
+        if let Some(mut single_config) = dir_config.remove(capsule_id) {
             config.merge(&mut single_config);
         }
 
         for matches in match_sources {
-            if let Some(inputs) = matches.values_of_os("input") {
+            if let Some(inputs) = matches.values_of("input") {
                 config.input_files.extend(inputs.map(|x| x.to_owned()));
             }
-            if let Some(tools) = matches.values_of_os("tool") {
+            if let Some(tools) = matches.values_of("tool") {
                 config.tool_tags.extend(tools.map(|x| x.to_owned()));
             }
-            if let Some(outputs) = matches.values_of_os("output") {
+            if let Some(outputs) = matches.values_of("output") {
                 config.output_files.extend(outputs.map(|x| x.to_owned()));
             }
             if matches.is_present("stdout") {
@@ -304,27 +271,27 @@ impl Config {
             if matches.is_present("verbose") {
                 config.verbose = true;
             }
-            if let Some(command) = matches.values_of_os("command_to_run") {
-                config.command_to_run = command.map(|x| x.to_os_string()).collect();
+            if let Some(command) = matches.values_of("command_to_run") {
+                config.command_to_run = command.map(|x| x.to_owned()).collect();
             }
-            if let Some(backend) = matches.value_of_os("backend") {
+            if let Some(backend) = matches.value_of("backend") {
                 if backend == "honeycomb" {
                     config.backend = Backend::Honeycomb;
                 }
             }
-            if let Some(value) = matches.value_of_os("honeycomb_dataset") {
+            if let Some(value) = matches.value_of("honeycomb_dataset") {
                 config.honeycomb_dataset = Some(value.into());
             }
-            if let Some(value) = matches.value_of_os("honeycomb_token") {
+            if let Some(value) = matches.value_of("honeycomb_token") {
                 config.honeycomb_token = Some(value.into());
             }
-            if let Some(value) = matches.value_of_os("honeycomb_trace_id") {
+            if let Some(value) = matches.value_of("honeycomb_trace_id") {
                 config.honeycomb_trace_id = Some(value.into());
             }
-            if let Some(value) = matches.value_of_os("honeycomb_parent_id") {
+            if let Some(value) = matches.value_of("honeycomb_parent_id") {
                 config.honeycomb_parent_id = Some(value.into());
             }
-            if let Some(values) = matches.values_of_os("honeycomb_kv") {
+            if let Some(values) = matches.values_of("honeycomb_kv") {
                 config.honeycomb_kv.extend(values.map(|x| x.to_owned()));
             }
         }
@@ -339,12 +306,7 @@ impl Config {
     pub fn get_honeycomb_kv(&self) -> Result<Vec<(String, String)>> {
         self.honeycomb_kv
             .iter()
-            .map(|value| {
-                value
-                    .to_str()
-                    .and_then(|value: &str| value.split_once('='))
-                    .map(|(a, b)| (a.to_owned(), b.to_owned()))
-            })
+            .map(|value| value.split_once('=').map(|(a, b)| (a.to_owned(), b.to_owned())))
             .collect::<Option<_>>()
             .ok_or(anyhow!("Can't parse honeycomb_kv"))
     }
@@ -508,7 +470,7 @@ mod tests {
             Some(current_config_file.path()),
         )
         .unwrap();
-        assert_eq!(config.capsule_id, Some(OsString::from("my_capsule_id")));
+        assert_eq!(config.capsule_id, Some(String::from("my_capsule_id")));
     }
 
     #[test]
@@ -609,10 +571,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             config.get_honeycomb_kv().unwrap(),
-            vec![
-                ("foo".to_owned(), "".to_owned()),
-                ("bar".to_owned(), "".to_owned())
-            ]
+            vec![("foo".to_owned(), "".to_owned()), ("bar".to_owned(), "".to_owned())]
         );
     }
 }

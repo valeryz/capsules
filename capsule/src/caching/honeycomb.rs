@@ -43,7 +43,7 @@ fn hash_details_to_json(bundle: &HashBundle) -> serde_json::Value {
                 file_map.insert(filename.to_string_lossy().into(), value);
             }
             Input::ToolTag(tool_tag) => {
-                tool_tag_map.insert(tool_tag.to_string_lossy().into(), value);
+                tool_tag_map.insert(tool_tag.to_string(), value);
             }
         }
     }
