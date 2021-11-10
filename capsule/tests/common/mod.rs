@@ -1,4 +1,5 @@
-use std::process::{Child, Command};
+use assert_cmd;
+use std::process;
 use std::{thread, time};
 
 use tempfile::{self, TempDir};
@@ -6,13 +7,20 @@ use tempfile::{self, TempDir};
 pub const MINIO_PORT: u16 = 54444;
 
 pub struct SetupData {
-    minio: Child,
-    directory: TempDir,
+    minio: process::Child,
+    directory: Option<TempDir>,
+}
+
+impl Drop for SetupData {
+    fn drop(&mut self) {
+        self.minio.kill().expect("Failed to stop Minio");
+        self.directory.take().map(|d| d.close());
+    }
 }
 
 pub fn setup() -> SetupData {
     let directory = tempfile::tempdir().expect("Failed to create temp dir");
-    let minio = Command::new("minio")
+    let minio = process::Command::new("minio")
         .args([
             "server",
             directory.path().to_str().unwrap(),
@@ -24,11 +32,16 @@ pub fn setup() -> SetupData {
         .expect("Minio failed to start");
     // TODO: Wait until we can connect to the port, instead of sleeping.
     thread::sleep(time::Duration::from_millis(100));
-    SetupData { minio, directory }
+    SetupData {
+        minio,
+        directory: Some(directory),
+    }
 }
 
-pub fn teardown(setup_data: SetupData) {
-    let mut child = setup_data.minio;
-    child.kill().expect("Failed to stop Minio");
-    setup_data.directory.close().unwrap();
+pub fn capsule(args: &[&str]) {
+    assert_cmd::Command::cargo_bin("capsule")
+        .expect("Couldn't find capsule target")
+        .args(args)
+        .output()
+        .expect("Couldn't execute capsule");
 }
