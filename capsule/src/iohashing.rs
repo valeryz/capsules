@@ -2,16 +2,14 @@ use anyhow;
 use anyhow::{Context, Result};
 use sha2::{Digest, Sha256};
 use std::cmp::Ordering;
-use std::ffi::{OsStr, OsString};
 use std::fs::File;
 use std::io::Read;
-use std::os::unix::prelude::OsStrExt;
 use std::path::{Path, PathBuf};
 
 #[derive(PartialOrd, Ord, PartialEq, Eq, Debug)]
 pub enum Input<'a> {
     /// string uniquely defining the tool version (could be even the hash of its binary).    
-    ToolTag(&'a OsString),
+    ToolTag(&'a str),
     /// Input file.
     File(PathBuf),
 }
@@ -48,7 +46,7 @@ fn file_hash(filename: &Path) -> Result<String> {
     Ok(format!("{:x}", acc.finalize()))
 }
 
-fn string_hash(s: &OsStr) -> String {
+fn string_hash(s: &str) -> String {
     let mut acc = Sha256::new();
     acc.update(s.as_bytes());
     format!("{:x}", acc.finalize())
@@ -127,8 +125,8 @@ pub enum Output<'a> {
     File(&'a FileOutput<'a>),
     ExitCode(usize),
     // TODO[bluepill]: to be handled in the future.
-    Stdout(&'a OsString),
-    Stderr(&'a OsString),
+    Stdout(&'a str),
+    Stderr(&'a str),
     Log(&'a FileOutput<'a>),
 }
 
@@ -220,7 +218,7 @@ mod tests {
     #[test]
     fn test_input_set_1() {
         let mut input_set = InputSet::default();
-        let tool_tag = OsString::from("some tool_tag");
+        let tool_tag = String::from("some tool_tag");
         input_set.add_input(Input::ToolTag(&tool_tag));
         let hash1 = input_set.hash().unwrap();
         assert_ne!(hash1, EMPTY_SHA256);
@@ -231,8 +229,8 @@ mod tests {
     #[test]
     fn test_input_set_different_order() {
         let mut input_set1 = InputSet::default();
-        let tool_tag1 = OsString::from("some tool_tag");
-        let tool_tag2 = OsString::from("another tool_tag");
+        let tool_tag1 = String::from("some tool_tag");
+        let tool_tag2 = String::from("another tool_tag");
         input_set1.add_input(Input::ToolTag(&tool_tag1));
         input_set1.add_input(Input::ToolTag(&tool_tag2));
         let mut input_set2 = InputSet::default();
@@ -244,8 +242,8 @@ mod tests {
     #[test]
     fn test_input_set_bundle() {
         let mut input_set1 = InputSet::default();
-        let tool_tag1 = OsString::from("some tool_tag");
-        let tool_tag2 = OsString::from("another tool_tag");
+        let tool_tag1 = String::from("some tool_tag");
+        let tool_tag2 = String::from("another tool_tag");
         input_set1.add_input(Input::ToolTag(&tool_tag1));
         input_set1.add_input(Input::ToolTag(&tool_tag2));
         let mut input_set2 = InputSet::default();

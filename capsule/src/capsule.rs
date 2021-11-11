@@ -28,7 +28,7 @@ impl<'a> Capsule<'a> {
     pub fn read_inputs(&mut self) -> Result<()> {
         for file_pattern in &self.config.input_files {
             let mut count = 0;
-            for file in glob(&file_pattern.to_string_lossy())? {
+            for file in glob(&file_pattern)? {
                 let file = file?;
                 if file.is_file() {
                     self.inputs.add_input(Input::File(file));
@@ -36,7 +36,7 @@ impl<'a> Capsule<'a> {
                 }
             }
             if count == 0 {
-                return Err(anyhow!("Not found: '{}'", file_pattern.to_string_lossy()));
+                return Err(anyhow!("Not found: '{}'", file_pattern));
             }
         }
         for tool_tag in &self.config.tool_tags {
