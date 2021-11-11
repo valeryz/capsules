@@ -53,7 +53,7 @@ fn string_hash(s: &str) -> String {
 }
 
 /// Helper function for both input and output hash finalization.
-fn bundle_hash<T>(hash_details: &Vec<(T, String)>) -> String {
+fn bundle_hash<T>(hash_details: &[(T, String)]) -> String {
     let mut acc: Sha256 = Sha256::new();
     for hash in hash_details.iter() {
         acc.update(&hash.1);

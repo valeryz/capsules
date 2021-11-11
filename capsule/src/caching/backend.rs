@@ -5,7 +5,7 @@ use crate::iohashing::{HashBundle, OutputHashBundle};
 
 pub trait CachingBackend {
     fn name(&self) -> &'static str {
-        return "backend";
+        "backend"
     }
 
     fn write(&self, inputs_bundle: &HashBundle, output_bundle: &OutputHashBundle) -> Result<()>;

@@ -89,7 +89,7 @@ fn output_hash_details_to_json(bundle: &OutputHashBundle) -> serde_json::Value {
 
 impl CachingBackend for HoneycombBackend {
     fn name(&self) -> &'static str {
-        return "backend";
+        "honeycomb"
     }
 
     fn write(&self, inputs_bundle: &HashBundle, output_bundle: &OutputHashBundle) -> Result<()> {

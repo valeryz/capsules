@@ -11,7 +11,7 @@ pub struct StdioBackend {
 
 impl CachingBackend for StdioBackend {
     fn name(&self) -> &'static str {
-        return "stdio";
+        "stdio"
     }
 
     #[allow(unused_variables)]

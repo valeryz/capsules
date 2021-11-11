@@ -28,7 +28,7 @@ impl<'a> Capsule<'a> {
     pub fn read_inputs(&mut self) -> Result<()> {
         for file_pattern in &self.config.input_files {
             let mut count = 0;
-            for file in glob(&file_pattern)? {
+            for file in glob(file_pattern)? {
                 let file = file?;
                 if file.is_file() {
                     self.inputs.add_input(Input::File(file));

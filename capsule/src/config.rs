@@ -237,7 +237,7 @@ impl Config {
         // and we don't have to specify the -c flag.
         if config.capsule_id.is_none() {
             if dir_config.len() == 1 {
-                config.capsule_id = Some(dir_config.keys().nth(0).unwrap().into());
+                config.capsule_id = Some(dir_config.keys().next().unwrap().into());
             } else {
                 bail!("Cannot determine capsule_id");
             }
@@ -308,7 +308,7 @@ impl Config {
             .iter()
             .map(|value| value.split_once('=').map(|(a, b)| (a.to_owned(), b.to_owned())))
             .collect::<Option<_>>()
-            .ok_or(anyhow!("Can't parse honeycomb_kv"))
+            .ok_or_else(|| anyhow!("Can't parse honeycomb_kv"))
     }
 }
 

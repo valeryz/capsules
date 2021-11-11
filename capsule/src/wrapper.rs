@@ -4,7 +4,7 @@ use nix::unistd::execvp;
 use std::env;
 use std::ffi::CString;
 
-static USAGE: &'static str = "Usage: capsule <capsule arguments ...> -- command [<arguments>]";
+static USAGE: &str = "Usage: capsule <capsule arguments ...> -- command [<arguments>]";
 
 pub fn exec_program<I>(program_name: String, args: I) -> Result<()>
 where
