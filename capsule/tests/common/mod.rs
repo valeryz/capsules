@@ -1,4 +1,5 @@
 use assert_cmd;
+use std::path::PathBuf;
 use std::process;
 use std::{thread, time};
 
@@ -8,7 +9,7 @@ pub const MINIO_PORT: u16 = 54444;
 
 pub struct SetupData {
     minio: process::Child,
-    directory: Option<TempDir>,
+    pub directory: Option<TempDir>,
 }
 
 impl Drop for SetupData {
@@ -18,12 +19,18 @@ impl Drop for SetupData {
     }
 }
 
+impl SetupData {
+    pub fn path(&self, elem: &str) -> PathBuf {
+        self.directory.as_ref().unwrap().path().join(elem)
+    }
+}
+
 pub fn setup() -> SetupData {
     let directory = tempfile::tempdir().expect("Failed to create temp dir");
     let minio = process::Command::new("minio")
         .args([
             "server",
-            directory.path().to_str().unwrap(),
+            directory.path().join("minio").to_str().unwrap(),
             "--address",
             &format!("127.0.0.1:{}", MINIO_PORT),
             "--quiet",
