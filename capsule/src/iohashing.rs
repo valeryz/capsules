@@ -5,8 +5,9 @@ use std::cmp::Ordering;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use serde::{Serialize, Deserialize};
 
-#[derive(PartialOrd, Ord, PartialEq, Eq, Debug, Clone)]
+#[derive(PartialOrd, Ord, PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
 pub enum Input {
     /// string uniquely defining the tool version (could be even the hash of its binary).    
     ToolTag(String),
@@ -21,7 +22,7 @@ pub struct InputSet {
 }
 
 // TODO: Make sure we can serialize/deserialize hash bundles.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct HashBundle {
     pub hash: String,
     pub hash_details: Vec<(Input, String)>,
@@ -112,14 +113,14 @@ impl InputSet {
 }
 
 // TODO: should we also add exec bit? or whole UNIX permissions?
-#[derive(PartialOrd, Ord, PartialEq, Eq, Debug, Clone)]
+#[derive(PartialOrd, Ord, PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
 pub struct FileOutput {
     pub filename: PathBuf,
     pub present: bool,
     // TODO[bluepill]: add file contents, which would stored in the cache.
 }
 
-#[derive(PartialOrd, Ord, PartialEq, Eq, Debug, Clone)]
+#[derive(PartialOrd, Ord, PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
 pub enum Output {
     // TODO: to be handled in placebo/blue pill.
     File(FileOutput),
@@ -130,7 +131,7 @@ pub enum Output {
     Log(FileOutput),
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct OutputHashBundle {
     pub hash: String,
     pub hash_details: Vec<(Output, String)>,
