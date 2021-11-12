@@ -10,7 +10,7 @@ use crate::iohashing::*;
 pub struct Capsule<'a> {
     config: &'a Config,
     caching_backend: Box<dyn CachingBackend>,
-    inputs: InputSet<'a>,
+    inputs: InputSet,
     // TODO(valeryz): enable it in Blue Pill.
     // outputs: OutputSet<'a>,
 }
@@ -40,16 +40,16 @@ impl<'a> Capsule<'a> {
             }
         }
         for tool_tag in &self.config.tool_tags {
-            self.inputs.add_input(Input::ToolTag(tool_tag));
+            self.inputs.add_input(Input::ToolTag(tool_tag.clone()));
         }
         Ok(())
     }
 
-    pub fn hash(&self) -> Result<String> {
+    pub fn hash(self) -> Result<String> {
         self.inputs.hash()
     }
 
-    pub fn write_cache(&self) -> Result<()> {
+    pub fn write_cache(self) -> Result<()> {
         // Outputs bundle is ununsed in Placebo, creating an empty one.
         let output_bundle = OutputHashBundle {
             hash: "".into(),

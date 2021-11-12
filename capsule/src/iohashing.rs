@@ -6,24 +6,25 @@ use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-#[derive(PartialOrd, Ord, PartialEq, Eq, Debug)]
-pub enum Input<'a> {
+#[derive(PartialOrd, Ord, PartialEq, Eq, Debug, Clone)]
+pub enum Input {
     /// string uniquely defining the tool version (could be even the hash of its binary).    
-    ToolTag(&'a str),
+    ToolTag(String),
     /// Input file.
     File(PathBuf),
 }
 
 /// Input set is the set of all inputs to the build step.
-#[derive(Default, Debug)]
-pub struct InputSet<'a> {
-    pub inputs: Vec<Input<'a>>,
+#[derive(Default, Debug, Clone)]
+pub struct InputSet {
+    pub inputs: Vec<Input>,
 }
 
+// TODO: Make sure we can serialize/deserialize hash bundles.
 #[derive(Debug, Default)]
-pub struct HashBundle<'a> {
+pub struct HashBundle {
     pub hash: String,
-    pub hash_details: Vec<(&'a Input<'a>, String)>,
+    pub hash_details: Vec<(Input, String)>,
 }
 
 /// Returns the hash of the given file.
@@ -61,12 +62,11 @@ fn bundle_hash<T>(hash_details: &[(T, String)]) -> String {
     format!("{:x}", acc.finalize())
 }
 
-
-impl<'a> InputSet<'a> {
+impl InputSet {
     /// Returns the HEX string of the hash of the whole input set.
     ///
     /// We calculate the whole hash bundle, and discard the separate hashes.
-    pub fn hash(&'a self) -> Result<String> {
+    pub fn hash(self) -> Result<String> {
         self.hash_bundle().map(|x| x.hash)
     }
 
@@ -74,18 +74,18 @@ impl<'a> InputSet<'a> {
     ///
     /// It does this by calculating a SHA256 hash of all SHA256 hashes of inputs (being either file
     /// or tool tag) sorted by the values of the hashes themselves.
-    pub fn hash_bundle(&'a self) -> Result<HashBundle<'a>> {
+    pub fn hash_bundle(self) -> Result<HashBundle> {
         // Calculate the hash of the input set independently of the order.
         let mut hash_bundle = HashBundle::default();
-        for input in &self.inputs {
+        for input in self.inputs {
             match input {
-                Input::File(s) => {
-                    hash_bundle.hash_details.push((input, format!("File{}", file_hash(s)?)));
+                Input::File(ref s) => {
+                    let tag = format!("File{}", file_hash(s)?);
+                    hash_bundle.hash_details.push((input, tag));
                 }
-                Input::ToolTag(s) => {
-                    hash_bundle
-                        .hash_details
-                        .push((input, format!("ToolTag{}", string_hash(s))));
+                Input::ToolTag(ref s) => {
+                    let tag = format!("ToolTag{}", string_hash(s));
+                    hash_bundle.hash_details.push((input, tag));
                 }
             }
         }
@@ -106,47 +106,47 @@ impl<'a> InputSet<'a> {
         Ok(hash_bundle)
     }
 
-    pub fn add_input(&mut self, input: Input<'a>) {
+    pub fn add_input(&mut self, input: Input) {
         self.inputs.push(input)
     }
 }
 
 // TODO: should we also add exec bit? or whole UNIX permissions?
-#[derive(PartialOrd, Ord, PartialEq, Eq, Debug)]
-pub struct FileOutput<'a> {
-    pub filename: &'a Path,
+#[derive(PartialOrd, Ord, PartialEq, Eq, Debug, Clone)]
+pub struct FileOutput {
+    pub filename: PathBuf,
     pub present: bool,
     // TODO[bluepill]: add file contents, which would stored in the cache.
 }
 
-#[derive(PartialOrd, Ord, PartialEq, Eq, Debug)]
-pub enum Output<'a> {
+#[derive(PartialOrd, Ord, PartialEq, Eq, Debug, Clone)]
+pub enum Output {
     // TODO: to be handled in placebo/blue pill.
-    File(&'a FileOutput<'a>),
+    File(FileOutput),
     ExitCode(usize),
     // TODO[bluepill]: to be handled in the future.
-    Stdout(&'a str),
-    Stderr(&'a str),
-    Log(&'a FileOutput<'a>),
+    Stdout(String),
+    Stderr(String),
+    Log(FileOutput),
 }
 
 #[derive(Debug, Default)]
-pub struct OutputHashBundle<'a> {
+pub struct OutputHashBundle {
     pub hash: String,
-    pub hash_details: Vec<(&'a Output<'a>, String)>,
+    pub hash_details: Vec<(Output, String)>,
 }
 
 /// Output set is the set of all process outputs.
 #[derive(Default)]
-pub struct OutputSet<'a> {
-    pub outputs: Vec<Output<'a>>,
+pub struct OutputSet {
+    pub outputs: Vec<Output>,
 }
 
-impl<'a> OutputSet<'a> {
+impl OutputSet {
     /// Returns the HEX string of the hash of the whole input set.
     ///
     /// We calculate the whole hash bundle, and discard the separate hashes.
-    pub fn hash(&'a self) -> Result<String> {
+    pub fn hash(self) -> Result<String> {
         self.hash_bundle().map(|x| x.hash)
     }
 
@@ -154,26 +154,23 @@ impl<'a> OutputSet<'a> {
     ///
     /// It does this by calculating a SHA256 hash of all SHA256 hashes of inputs (being either file
     /// or tool tag) sorted by the values of the hashes themselves.
-    pub fn hash_bundle(&'a self) -> Result<OutputHashBundle<'a>> {
+    pub fn hash_bundle(self) -> Result<OutputHashBundle> {
         // Calculate the hash of the input set independently of the order.
         let mut hash_bundle = OutputHashBundle::default();
-        for output in &self.outputs {
+        for output in self.outputs {
             match output {
-                Output::File(file_output) => {
-                    hash_bundle.hash_details.push(
-                        (output,
-                         if file_output.present {
-                             format!("File{}", file_hash(file_output.filename)?)
-                         } else {
-                             "FileNonExistent".to_string()
-                         }))
+                Output::File(ref file_output) => {
+                    let tag = if file_output.present {
+                        format!("File{}", file_hash(&file_output.filename)?)
+                    } else {
+                        "FileNonExistent".to_string()
+                    };
+                    hash_bundle.hash_details.push((output, tag));
                 }
                 Output::ExitCode(code) => {
-                    hash_bundle
-                        .hash_details
-                        .push((output, format!("ExitCode{}", code)));
+                    hash_bundle.hash_details.push((output, format!("ExitCode{}", code)));
                 }
-                _ => { }
+                _ => {}
             }
         }
         // Sort inputs hashes by the hash value.
@@ -182,7 +179,7 @@ impl<'a> OutputSet<'a> {
         Ok(hash_bundle)
     }
 
-    pub fn add_output(&mut self, output: Output<'a>) {
+    pub fn add_output(&mut self, output: Output) {
         self.outputs.push(output)
     }
 }
@@ -219,11 +216,9 @@ mod tests {
     fn test_input_set_1() {
         let mut input_set = InputSet::default();
         let tool_tag = String::from("some tool_tag");
-        input_set.add_input(Input::ToolTag(&tool_tag));
+        input_set.add_input(Input::ToolTag(tool_tag));
         let hash1 = input_set.hash().unwrap();
         assert_ne!(hash1, EMPTY_SHA256);
-        let hash2 = input_set.hash().unwrap();
-        assert_eq!(hash1, hash2);
     }
 
     #[test]
@@ -231,11 +226,11 @@ mod tests {
         let mut input_set1 = InputSet::default();
         let tool_tag1 = String::from("some tool_tag");
         let tool_tag2 = String::from("another tool_tag");
-        input_set1.add_input(Input::ToolTag(&tool_tag1));
-        input_set1.add_input(Input::ToolTag(&tool_tag2));
+        input_set1.add_input(Input::ToolTag(tool_tag1.clone()));
+        input_set1.add_input(Input::ToolTag(tool_tag2.clone()));
         let mut input_set2 = InputSet::default();
-        input_set2.add_input(Input::ToolTag(&tool_tag2));
-        input_set2.add_input(Input::ToolTag(&tool_tag1));
+        input_set2.add_input(Input::ToolTag(tool_tag2));
+        input_set2.add_input(Input::ToolTag(tool_tag1));
         assert_eq!(input_set1.hash().unwrap(), input_set2.hash().unwrap());
     }
 
@@ -244,11 +239,11 @@ mod tests {
         let mut input_set1 = InputSet::default();
         let tool_tag1 = String::from("some tool_tag");
         let tool_tag2 = String::from("another tool_tag");
-        input_set1.add_input(Input::ToolTag(&tool_tag1));
-        input_set1.add_input(Input::ToolTag(&tool_tag2));
+        input_set1.add_input(Input::ToolTag(tool_tag1.clone()));
+        input_set1.add_input(Input::ToolTag(tool_tag2.clone()));
         let mut input_set2 = InputSet::default();
-        input_set2.add_input(Input::ToolTag(&tool_tag2));
-        input_set2.add_input(Input::ToolTag(&tool_tag1));
+        input_set2.add_input(Input::ToolTag(tool_tag2));
+        input_set2.add_input(Input::ToolTag(tool_tag1));
         let bundle1 = input_set1.hash_bundle().unwrap();
         let bundle2 = input_set2.hash_bundle().unwrap();
         assert_eq!(bundle1.hash, bundle2.hash);
@@ -267,7 +262,7 @@ mod tests {
         input_set.add_input(Input::File(file1.path().into()));
         // These hashes were obtained by manual manipulation files and `openssl sha256`
         assert_eq!(
-            input_set.hash().unwrap(),
+            input_set.clone().hash().unwrap(),
             "f409e4c7ae76997e69556daae6139bee1f02e4f618d3da8deea10bb35b6c0ebd"
         );
         input_set.add_input(Input::File(file2.path().into()));
