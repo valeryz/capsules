@@ -1,10 +1,9 @@
-use crate::caching::backend::CachingBackend;
 use anyhow::Result;
 use reqwest;
 use crate::iohashing::{HashBundle, OutputHashBundle, Input, Output};
 use serde_json;
 
-pub struct HoneycombBackend {
+pub struct Honeycomb {
     /// Honeycomb dataset ('capsule', or 'capsule-test' etc.)
     pub dataset: String,
 
@@ -87,12 +86,9 @@ fn output_hash_details_to_json(bundle: &OutputHashBundle) -> serde_json::Value {
     serde_json::Value::Object(json_map)
 }
 
-impl CachingBackend for HoneycombBackend {
-    fn name(&self) -> &'static str {
-        "honeycomb"
-    }
+impl Honeycomb {
 
-    fn write(&self, inputs_bundle: &HashBundle, output_bundle: &OutputHashBundle) -> Result<()> {
+    pub fn write(&self, inputs_bundle: &HashBundle, output_bundle: &OutputHashBundle) -> Result<()> {
         let mut map = serde_json::Map::new();
         map.insert("trace.trace_id".into(), self.trace_id.clone().into());
         map.insert("trace.span_id".into(), self.capsule_id.clone().into());

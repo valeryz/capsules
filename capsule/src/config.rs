@@ -22,8 +22,8 @@ pub enum Milestone {
 #[derivative(Default)]
 pub enum Backend {
     #[derivative(Default)]
-    Stdio,
-    Honeycomb,
+    Dummy,  // No backend means dummy.
+    S3,
 }
 
 #[derive(Debug, Deserialize, Derivative)]
@@ -181,7 +181,7 @@ impl Config {
                     .short('b')
                     .long("backend")
                     .about("which backend to use")
-                    .possible_values(&["stdio", "honeycomb"]),
+                    .possible_values(&["dummy", "s3"]),
             )
             .arg(
                 Arg::new("honeycomb_dataset")
@@ -274,9 +274,10 @@ impl Config {
             if let Some(command) = matches.values_of("command_to_run") {
                 config.command_to_run = command.map(|x| x.to_owned()).collect();
             }
+            config.backend = Backend::Dummy;
             if let Some(backend) = matches.value_of("backend") {
-                if backend == "honeycomb" {
-                    config.backend = Backend::Honeycomb;
+                if backend == "s3" {
+                    config.backend = Backend::S3;
                 }
             }
             if let Some(value) = matches.value_of("honeycomb_dataset") {

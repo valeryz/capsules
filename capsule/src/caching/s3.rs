@@ -1,5 +1,6 @@
 use anyhow::Result;
 use rusoto_s3::{GetObjectOutput, GetObjectRequest, PutObjectRequest, S3Client, S3 as _};
+use rusoto_core::region::Region;
 use hyperx::header::CacheDirective;
 
 use crate::config::Config;
@@ -11,9 +12,6 @@ pub struct S3Backend<'a> {
     /// S3 bucket
     pub bucket: String,
 
-    /// Endpoint
-    pub endpoint: String,
-
     /// Config instance.
     pub config: &'a Config,
 
@@ -21,7 +19,25 @@ pub struct S3Backend<'a> {
     pub client: S3Client,
 }
 
+impl<'a> S3Backend<'_> {
+    fn from_config(config: &'a Config) {
+        Self {
+            bucket: config
+                .s3_bucket
+                .clone()
+                .ok_or_else(|| anyhow!("S3 bucket not specified"))?,
+            config: config,
+            client: S3Client::new(
+                Region::Custom {
+                    name: config.s3_region.ok_or_else(|| anyhow!("S3 region not specified"))?,
+                    endpoint: config.s3_endpoint.ok_or_else(|| anyhow!("S3 endpoint not specified"))?,
+                })
+        }
+    }
+}
+
 impl<'a> CachingBackend for S3Backend<'_> {
+    
     fn name(&self) -> &'static str {
         "s3"
     }
@@ -39,6 +55,6 @@ impl<'a> CachingBackend for S3Backend<'_> {
             key,
             ..Default::default()
         };
-        self.client.pub_object(request).context("failed to put cache entry")
+        self.client.as_ref().map(|client| client.pub_object(request).context("failed to put cache entry"))
     }
 }

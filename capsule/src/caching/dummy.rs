@@ -4,14 +4,14 @@ use anyhow::Result;
 use crate::iohashing::{HashBundle, OutputHashBundle};
 
 #[derive(Default)]
-pub struct StdioBackend {
+pub struct DummyBackend {
     pub verbose_output: bool,
     pub capsule_id: String,
 }
 
-impl CachingBackend for StdioBackend {
+impl CachingBackend for DummyBackend {
     fn name(&self) -> &'static str {
-        "stdio"
+        "dummy"
     }
 
     #[allow(unused_variables)]
