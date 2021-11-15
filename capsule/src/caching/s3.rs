@@ -64,7 +64,7 @@ impl CachingBackend for S3Backend {
             outputs,
         };
         let key = format!("{}:{}", self.capsule_id, &io_bundle.inputs.hash);
-        // Write to S3
+        // Prepare data for S3 writing.
         let data = serde_cbor::to_vec(&io_bundle)?;
         let data_len = data.len();
         let request = PutObjectRequest {
@@ -77,6 +77,8 @@ impl CachingBackend for S3Backend {
             key,
             ..Default::default()
         };
+
+        // Write data to S3 (asynchronously).
         self.client
             .put_object(request)
             .await
