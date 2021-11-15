@@ -4,10 +4,11 @@ use async_trait::async_trait;
 use hyperx::header::CacheDirective;
 use rusoto_core::region::Region;
 use rusoto_s3::{GetObjectOutput, GetObjectRequest, PutObjectRequest, S3Client, S3 as _};
+use serde::{Serialize, Deserialize};
+use serde_cbor;
 
 use crate::caching::backend::CachingBackend;
 use crate::config::Config;
-use crate::iohashing::Output;
 use crate::iohashing::{HashBundle, OutputHashBundle};
 
 pub struct S3Backend {
@@ -45,6 +46,7 @@ impl S3Backend {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 struct InputOutputBundle {
     inputs: HashBundle,
     outputs: OutputHashBundle,
@@ -56,17 +58,21 @@ impl CachingBackend for S3Backend {
         "s3"
     }
 
-    async fn write(&self, inputs_bundle: &HashBundle, output_bundle: &OutputHashBundle) -> Result<()> {
-        let key = format!("{}:{}", self.capsule_id, inputs_bundle.hash);
+    async fn write(&self, inputs: HashBundle, outputs: OutputHashBundle) -> Result<()> {
+        let io_bundle = InputOutputBundle {
+            inputs,
+            outputs,
+        };
+        let key = format!("{}:{}", self.capsule_id, &io_bundle.inputs.hash);
         // Write to S3
-        let data_length = 1024;
-        let data = vec![0; data_length];
+        let data = serde_cbor::to_vec(&io_bundle)?;
+        let data_len = data.len();
         let request = PutObjectRequest {
             bucket: self.bucket.clone(),
             body: Some(data.into()),
             // Two weeks
             cache_control: Some(CacheDirective::MaxAge(1_296_000).to_string()),
-            content_length: Some(data_length as i64),
+            content_length: Some(data_len as i64),
             content_type: Some("application/octet-stream".to_owned()),
             key,
             ..Default::default()
@@ -78,3 +84,4 @@ impl CachingBackend for S3Backend {
         Ok(())
     }
 }
+

@@ -54,6 +54,12 @@ fn string_hash(s: &str) -> String {
     format!("{:x}", acc.finalize())
 }
 
+fn bytes_hash(s: &[u8]) -> String {
+    let mut acc = Sha256::new();
+    acc.update(s);
+    format!("{:x}", acc.finalize())
+}
+
 /// Helper function for both input and output hash finalization.
 fn bundle_hash<T>(hash_details: &[(T, String)]) -> String {
     let mut acc: Sha256 = Sha256::new();
@@ -117,15 +123,14 @@ impl InputSet {
 pub struct FileOutput {
     pub filename: PathBuf,
     pub present: bool,
-    pub content: Vec<u8>,
 }
 
 #[derive(PartialOrd, Ord, PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
 pub enum Output {
     File(FileOutput),
     ExitCode(usize),
-    Stdout(String),
-    Stderr(String),
+    Stdout(Vec<u8>),
+    Stderr(Vec<u8>),
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -168,7 +173,14 @@ impl OutputSet {
                 Output::ExitCode(code) => {
                     hash_bundle.hash_details.push((output, format!("ExitCode{}", code)));
                 }
-                _ => {}
+                Output::Stdout(ref buffer) => {
+                    let hash = format!("Stdout{}", bytes_hash(buffer));
+                    hash_bundle.hash_details.push((output, hash));
+                }
+                Output::Stderr(ref buffer) => {
+                    let hash = format!("Stderr{}", bytes_hash(buffer));
+                    hash_bundle.hash_details.push((output, hash));
+                }
             }
         }
         // Sort inputs hashes by the hash value.

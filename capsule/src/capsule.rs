@@ -74,7 +74,7 @@ impl<'a> Capsule<'a> {
             eprintln!("Failed to log results for observability: {:?}", err);
         });
         // Finally, we'll write our results to the caching backend.
-        self.caching_backend.write(&input_bundle, &output_bundle).await
+        self.caching_backend.write(input_bundle, output_bundle).await
     }
 }
 

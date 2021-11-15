@@ -10,7 +10,7 @@ pub trait CachingBackend {
         "backend"
     }
 
-    async fn write(&self, inputs_bundle: &HashBundle, output_bundle: &OutputHashBundle) -> Result<()>;
+    async fn write(&self, _inputs: HashBundle, _outputs: OutputHashBundle) -> Result<()>;
 }
 
 impl fmt::Debug for dyn CachingBackend {

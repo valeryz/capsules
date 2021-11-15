@@ -17,14 +17,14 @@ impl CachingBackend for DummyBackend {
     }
 
     #[allow(unused_variables)]
-    async fn write(&self, inputs_bundle: &HashBundle, output_bundle: &OutputHashBundle) -> Result<()> {
+    async fn write(&self, inputs: HashBundle, outputs: OutputHashBundle) -> Result<()> {
         println!(
             "Capsule ID: '{}'. Inputs key: '{}'",
             self.capsule_id,
-            inputs_bundle.hash
+            &inputs.hash
         );
         if self.verbose_output {
-            println!("  Capsule Inputs hashes: {:?}", inputs_bundle.hash_details);
+            println!("  Capsule Inputs hashes: {:?}", &inputs.hash_details);
         }
         Ok(())
     }
