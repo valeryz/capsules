@@ -74,6 +74,15 @@ pub struct Config {
     // values of --honeycomb_kv flag, to be accessed via a method.
     #[serde(default)]
     honeycomb_kv: Vec<String>,
+
+    #[serde(default)]
+    pub s3_bucket: Option<String>,
+
+    #[serde(default)]
+    pub s3_endpoint: Option<String>,
+
+    #[serde(default)]
+    pub s3_region: Option<String>,
 }
 
 impl Config {
@@ -294,6 +303,15 @@ impl Config {
             }
             if let Some(values) = matches.values_of("honeycomb_kv") {
                 config.honeycomb_kv.extend(values.map(|x| x.to_owned()));
+            }
+            if let Some(value) = matches.value_of("s3_bucket") {
+                config.s3_bucket = Some(value.into());
+            }
+            if let Some(value) = matches.value_of("s3_region") {
+                config.s3_region = Some(value.into());
+            }
+            if let Some(value) = matches.value_of("s3_endpoint") {
+                config.s3_endpoint = Some(value.into());
             }
         }
 

@@ -117,18 +117,15 @@ impl InputSet {
 pub struct FileOutput {
     pub filename: PathBuf,
     pub present: bool,
-    // TODO[bluepill]: add file contents, which would stored in the cache.
+    pub content: Vec<u8>,
 }
 
 #[derive(PartialOrd, Ord, PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
 pub enum Output {
-    // TODO: to be handled in placebo/blue pill.
     File(FileOutput),
     ExitCode(usize),
-    // TODO[bluepill]: to be handled in the future.
     Stdout(String),
     Stderr(String),
-    Log(FileOutput),
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]

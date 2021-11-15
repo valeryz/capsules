@@ -1,11 +1,12 @@
-use anyhow::anyhow;
 use anyhow::Result;
 use capsule::caching::backend::CachingBackend;
-use capsule::caching::s3;
 use capsule::caching::dummy;
-use capsule::honeycomb;
+use capsule::caching::s3;
 use capsule::capsule::Capsule;
 use capsule::config::{Backend, Config};
+use capsule::observability::dummy::Dummy as DummyLogger;
+use capsule::observability::honeycomb;
+use capsule::observability::logger::Logger;
 use capsule::wrapper;
 use std::env;
 use std::path::Path;
@@ -18,14 +19,20 @@ async fn capsule_main() -> Result<()> {
         Some(Path::new("Capsule.toml")),
     )?;
     let backend: Box<dyn CachingBackend> = match config.backend {
-        Backend::Dummy => Box::new(dummy::DummyBackend),
-        Backend::S3 => Box::new(s3::S3Backend::from_config(&config)),
+        Backend::Dummy => Box::new(dummy::DummyBackend {
+            verbose_output: config.verbose,
+            capsule_id: config.capsule_id.as_ref().cloned().unwrap(),
+        }),
+        Backend::S3 => Box::new(s3::S3Backend::from_config(&config)?),
     };
-    let tracer = honeycomb::Honeycomb {
-    }
-    let mut capsule = Capsule::new(&config, backend, tracer);
+    let logger: Box<dyn Logger> = if config.honeycomb_dataset.is_some() {
+        Box::new(honeycomb::Honeycomb::from_config(&config)?)
+    } else {
+        Box::new(DummyLogger)
+    };
+    let mut capsule = Capsule::new(&config, backend, logger);
     capsule.read_inputs()?;
-    capsule.write_cache()
+    capsule.write_cache().await
 }
 
 #[tokio::main]

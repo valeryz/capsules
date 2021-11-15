@@ -1,7 +1,10 @@
+use anyhow::anyhow;
 use anyhow::Result;
 use reqwest;
-use crate::iohashing::{HashBundle, OutputHashBundle, Input, Output};
+use crate::{config::Config, iohashing::{HashBundle, OutputHashBundle, Input, Output}};
 use serde_json;
+
+use super::logger::Logger;
 
 pub struct Honeycomb {
     /// Honeycomb dataset ('capsule', or 'capsule-test' etc.)
@@ -21,6 +24,31 @@ pub struct Honeycomb {
 
     /// Extra Key-values.
     pub extra_kv: Vec<(String, String)>,
+}
+
+impl Honeycomb {
+    pub fn from_config(config: &Config) -> Result<Self> {
+        Ok(Self {
+            dataset: config
+                .honeycomb_dataset
+                .clone()
+                .ok_or_else(|| anyhow!("Honeycomb dataset not specified"))?,
+            honeycomb_token: config
+                .honeycomb_token
+                .clone()
+                .ok_or_else(|| anyhow!("Honeycomb Token not specified"))?,
+            capsule_id: config
+                .capsule_id
+                .clone()
+                .ok_or_else(|| anyhow!("Capsule_id is unknown"))?,
+            trace_id: config
+                .honeycomb_trace_id
+                .clone()
+                .ok_or_else(|| anyhow!("Honeycomb Trace ID is not specified"))?,
+            parent_id: config.honeycomb_parent_id.clone(),
+            extra_kv: config.get_honeycomb_kv()?,
+        })
+    }
 }
 
 /// Max number of JSON entries in the dict. We need to cap it so that
@@ -86,9 +114,9 @@ fn output_hash_details_to_json(bundle: &OutputHashBundle) -> serde_json::Value {
     serde_json::Value::Object(json_map)
 }
 
-impl Honeycomb {
+impl Logger for Honeycomb {
 
-    pub fn log(&self, inputs_bundle: &HashBundle, output_bundle: &OutputHashBundle) -> Result<()> {
+    fn log(&self, inputs_bundle: &HashBundle, output_bundle: &OutputHashBundle) -> Result<()> {
         let mut map = serde_json::Map::new();
         map.insert("trace.trace_id".into(), self.trace_id.clone().into());
         map.insert("trace.span_id".into(), self.capsule_id.clone().into());
