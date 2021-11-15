@@ -2,30 +2,46 @@ use anyhow::anyhow;
 use anyhow::{Context, Result};
 
 use glob::glob;
+use std::env;
+use std::process::{Command, Child, ExitStatus};
 
 use crate::caching::backend::CachingBackend;
 use crate::config::Config;
 use crate::iohashing::*;
 use crate::observability::logger::Logger;
 
-pub struct Capsule<'a> {
+        
+static USAGE: &'static str = "Usage: capsule <capsule arguments ...> -- command [<arguments>]";
+
+struct Capsule<'a> {
+    /// Indicates whether the program has been run within the capsule.
+    pub program_run: bool,
+
     config: &'a Config,
     caching_backend: Box<dyn CachingBackend>,
     logger: Box<dyn Logger>,
     inputs: InputSet,
-    // TODO(valeryz): enable it in Blue Pill.
-    // outputs: OutputSet<'a>,
+    outputs: OutputSet,
 }
 
 impl<'a> Capsule<'a> {
     pub fn new(config: &'a Config, caching_backend: Box<dyn CachingBackend>, logger: Box<dyn Logger>) -> Self {
         Self {
+            program_run: false,
             config,
             caching_backend,
             logger,
             inputs: InputSet::default(),
-            // outputs: OutputSet::default(),
+            outputs: OutputSet::default(),
         }
+    }
+
+    pub fn hash(self) -> Result<String> {
+        self.inputs.hash()
+    }
+
+    pub fn capsule_id(&self) -> String {
+        self.config.capsule_id.as_ref().cloned().unwrap()
     }
 
     pub fn read_inputs(&mut self) -> Result<()> {
@@ -42,31 +58,105 @@ impl<'a> Capsule<'a> {
                 return Err(anyhow!("Not found: '{}'", file_pattern));
             }
         }
+
         for tool_tag in &self.config.tool_tags {
             self.inputs.add_input(Input::ToolTag(tool_tag.clone()));
         }
         Ok(())
     }
 
-    pub fn hash(self) -> Result<String> {
-        self.inputs.hash()
+    pub fn read_outputs(&mut self) -> Result<()> {
+        for file_pattern in &self.config.output_files {
+            for file in glob(file_pattern)? {
+                let file = file?;
+                if file.is_file() {
+                    self.outputs.add_output(Output::File(FileOutput {
+                        filename: file.to_path_buf(),
+                        present: true,
+                    }));
+                } else {
+                    self.outputs.add_output(Output::File(FileOutput {
+                        filename: file.to_path_buf(),
+                        present: false,
+                    }));
+                }
+            }
+        }
+        Ok(())
     }
 
-    pub async fn write_cache(self) -> Result<()> {
-        // Outputs bundle is ununsed in Placebo, creating an empty one.
-        let output_bundle = OutputHashBundle {
-            hash: "".into(),
-            hash_details: vec![],
-        };
+    // TODO: WTF is that thing!
+    pub fn run_capsule(&mut self, program_run: &mut bool) -> Result<(HashBundle, OutputHashBundle, ExitStatus)> {
+        self.read_inputs()
+        .and_then(|_| self.get_inputs_bundle())
+        .and_then(|inputs| {
+            self.execute_command().and_then(|child| {
+                // We just need to tell our caller whether we succeeded in running the program.
+                // this happens as soon as we have a child program.
+                *program_run = true;
+                child.wait()
+                    .with_context(|| "Waiting for child")
+                    .and_then(
+                        |exit_code| {
+                            self.read_outputs().and_then(|_| {
+                                self.get_outputs_bundle(exit_code)
+                                    .map(|outputs| (inputs, outputs, exit_code))
+                            })
+                        })
+            })
+        })
+    }
+
+    pub fn get_inputs_bundle(self) -> Result<HashBundle> {
+        let capsule_id = self.capsule_id();
+        self.inputs
+            .hash_bundle()
+            .with_context(|| format!("Hashing inputs of capsule '{:?}'", capsule_id))
+    }
+
+    pub fn get_outputs_bundle(self, exit_status: ExitStatus) -> Result<OutputHashBundle> {
+        let capsule_id = self.capsule_id();
+        self.outputs
+            .hash_bundle()
+            .with_context(|| format!("Hashing outputs of capsule '{:?}'", capsule_id))
+    }
+
+    pub fn execute_command(&self) -> Result<Child> {
+        let mut args = env::args();
+        let argv0 = &mut args.next();
+        if argv0.is_none() {
+            return Err(anyhow!(USAGE));
+        }
+        // Consume the rest of the arguments until we have the -- part
+        for arg in args.by_ref() {
+            if arg == "--" {
+                break;
+            }
+        }
+        
+        let args: Vec<String> = args.collect();
+        let s: String = args.join(" ");
+        Command::new("/bin/bash")
+            .arg("-c")
+            .arg(s)
+            .spawn()
+            .with_context(|| format!("Spawning command"))
+    }
+    
+    pub async fn write_cache(self) -> Result<i32> {
+        let mut program_run = false;
         let capsule_id = self.config.capsule_id.as_ref().expect("capsule_id must be specified");
         let input_bundle = self
             .inputs
             .hash_bundle()
             .with_context(|| format!("Hashing inputs of capsule '{:?}'", capsule_id))?;
 
-        // TODO: call the wrapped program.
+        program_run = true;
 
-        // TODO: calculate the output bundle.
+        let output_bundle = self
+            .outputs
+            .hash_bundle()
+            .with_context(|| format!("Hashing outputs of capsule '{:?}'", capsule_id))?;
 
         // We try logging for observability, but we will not stop it if there was a problem,
         // only try complaining about it.
@@ -74,7 +164,8 @@ impl<'a> Capsule<'a> {
             eprintln!("Failed to log results for observability: {:?}", err);
         });
         // Finally, we'll write our results to the caching backend.
-        self.caching_backend.write(input_bundle, output_bundle).await
+        self.caching_backend.write(input_bundle, output_bundle).await?;
+        Ok(0) // TODO: change this to the return code for the program.
     }
 }
 
