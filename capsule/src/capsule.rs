@@ -2,7 +2,6 @@ use anyhow::anyhow;
 use anyhow::{Context, Result};
 
 use glob::glob;
-use std::env;
 use std::process::{Child, Command, ExitStatus};
 
 use crate::caching::backend::CachingBackend;
@@ -10,7 +9,7 @@ use crate::config::Config;
 use crate::iohashing::*;
 use crate::observability::logger::Logger;
 
-static USAGE: &'static str = "Usage: capsule <capsule arguments ...> -- command [<arguments>]";
+static USAGE: &str = "Usage: capsule <capsule arguments ...> -- command [<arguments>]";
 
 pub struct Capsule<'a> {
     /// Indicates whether the program has been run within the capsule.
@@ -110,25 +109,14 @@ impl<'a> Capsule<'a> {
     }
 
     pub fn execute_command(&self) -> Result<Child> {
-        let mut args = env::args();
-        let argv0 = &mut args.next();
-        if argv0.is_none() {
-            return Err(anyhow!(USAGE));
+        if self.config.command_to_run.is_empty() {
+            Err(anyhow!(USAGE))
+        } else {
+            Command::new(&self.config.command_to_run[0])
+                .args(&self.config.command_to_run[1..])
+                .spawn()
+                .with_context(|| "Spawning command")
         }
-        // Consume the rest of the arguments until we have the -- part
-        for arg in args.by_ref() {
-            if arg == "--" {
-                break;
-            }
-        }
-
-        let args: Vec<String> = args.collect();
-        let s: String = args.join(" ");
-        Command::new("/bin/bash")
-            .arg("-c")
-            .arg(s)
-            .spawn()
-            .with_context(|| format!("Spawning command"))
     }
 
     pub async fn write_cache(&self, inputs: HashBundle, outputs: OutputHashBundle) -> Result<()> {

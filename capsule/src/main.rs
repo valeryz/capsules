@@ -20,11 +20,11 @@ fn create_capsule(config: &Config) -> Result<Capsule<'_>> {
             verbose_output: config.verbose,
             capsule_id: config.capsule_id.as_ref().cloned().unwrap(),
         }),
-        Backend::S3 => Box::new(s3::S3Backend::from_config(&config)?),
+        Backend::S3 => Box::new(s3::S3Backend::from_config(config)?),
     };
     // Instantiate our logger (for observability)
     let logger: Box<dyn Logger> = if config.honeycomb_dataset.is_some() {
-        Box::new(honeycomb::Honeycomb::from_config(&config)?)
+        Box::new(honeycomb::Honeycomb::from_config(config)?)
     } else {
         Box::new(DummyLogger)
     };
@@ -36,11 +36,11 @@ fn create_capsule(config: &Config) -> Result<Capsule<'_>> {
 async fn main() -> Result<()> {
     let default_toml = std::env::var("HOME")
         .ok()
-        .and_then(|home| Some(home + "/.capsules.toml"));
+        .map(|home| home + "/.capsules.toml");
     let config = Config::new(
         env::args(),
         default_toml.as_ref().map(Path::new),
-        Some(Path::new("Capsule.toml").as_ref()),
+        Some(Path::new("Capsule.toml")),
     )?;
     let capsule = create_capsule(&config)?;
 
@@ -62,7 +62,7 @@ async fn main() -> Result<()> {
             // If we failed to run the program, try falling back to
             // just 'exec' behavior without any results caching.
             if !program_run {
-                wrapper::execute_legacy().expect("Execution of wrapped program failed");
+                wrapper::exec().expect("Execution of wrapped program failed");
                 unreachable!()
             } else {
                 Err(err)
