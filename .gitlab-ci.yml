@@ -6,6 +6,7 @@ stages:
 build-test-debug-stable:
   stage: build
   image: registry.gitlab.com/dfinity-lab/infra-group/capsules/rust-minio:latest
+  allow_failure: true  # As of 11/2021, we build on nightly. On Jan 13, we can switch to stable.
   script: |
     set -eux
     cd capsule
@@ -24,7 +25,7 @@ build-test-debug-nightly:
 
 build-release:
   stage: build
-  image: registry.gitlab.com/dfinity-lab/infra-group/capsules/rust-minio:latest
+  image: registry.gitlab.com/dfinity-lab/infra-group/capsules/rust-minio:nightly
   script: |
     cd capsule 
     cargo build --package capsule --release

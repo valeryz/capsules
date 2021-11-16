@@ -118,7 +118,7 @@ impl Config {
         if let Some(default_toml) = default_toml {
             if let Ok(contents) = std::fs::read_to_string(default_toml) {
                 let home_config = toml::from_str::<Config>(&contents)
-                    .with_context(|| format!("Parsing default config {:?}", default_toml))?;
+                    .with_context(|| format!("Parsing default config '{}'", default_toml.to_string_lossy()))?;
                 config = home_config;
             }
         }

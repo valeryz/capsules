@@ -1,4 +1,3 @@
-use anyhow::anyhow;
 use anyhow::Result;
 use capsule::caching::backend::CachingBackend;
 use capsule::caching::dummy;
@@ -9,6 +8,9 @@ use capsule::observability::dummy::Dummy as DummyLogger;
 use capsule::observability::honeycomb;
 use capsule::observability::logger::Logger;
 use capsule::wrapper;
+use std::env;
+use std::os::unix::prelude::ExitStatusExt;
+use std::process;
 use std::path::Path;
 
 fn create_capsule(config: &Config) -> Result<Capsule<'_>> {
@@ -31,7 +33,7 @@ fn create_capsule(config: &Config) -> Result<Capsule<'_>> {
 }
 
 #[tokio::main]
-fn main() -> Result<()> {
+async fn main() -> Result<()> {
     let default_toml = std::env::var("HOME")
         .ok()
         .and_then(|home| Some(home + "/.capsules.toml"));
@@ -40,21 +42,25 @@ fn main() -> Result<()> {
         default_toml.as_ref().map(Path::new),
         Some(Path::new("Capsule.toml").as_ref()),
     )?;
-    let mut capsule = create_capsule(&config)?;
+    let capsule = create_capsule(&config)?;
 
+    // Running of the capsule may fail. It may fail either before the wrapped program
+    // was run, or after. This flag says whether the program was actually run.
     let mut program_run = false;
-    let result = capsule.run_capsule(&mut program_rum);
+    let result = capsule.run_capsule(&mut program_run);
 
     match result {
-        Ok(inputs, outputs, exit_status) => {
+        Ok((inputs, outputs, exit_status)) => {
             capsule
-                .write_cache(inputs, output)
+                .write_cache(inputs, outputs)
                 .await
-                .unwrap_or_else(|err| eprintln!("Couldn't write to cache"));
-            process::exit(exit_status);
+                .unwrap_or_else(|err| eprintln!("Couldn't write to cache: {}", err));
+            process::exit(exit_status.into_raw());
         }
         Err(err) => {
             eprintln!("Capsule error: {:#}", err);
+            // If we failed to run the program, try falling back to
+            // just 'exec' behavior without any results caching.
             if !program_run {
                 wrapper::execute_legacy().expect("Execution of wrapped program failed");
                 unreachable!()

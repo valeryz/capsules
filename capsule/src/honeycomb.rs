@@ -59,7 +59,7 @@ fn hash_details_to_json(bundle: &HashBundle) -> serde_json::Value {
 /// Convert hash deails (with each filename and tool_tag separately) to JSON.
 fn output_hash_details_to_json(bundle: &OutputHashBundle) -> serde_json::Value {
     let mut file_map = serde_json::Map::<String, serde_json::Value>::new();
-    let mut exit_code : Option<usize> = None;
+    let mut exit_code : Option<i32> = None;
     for (output, hash) in bundle.hash_details.iter() {
         // Cap the size of the resulting JSON.
         if file_map.len() > MAX_JSON_ENTRIES {

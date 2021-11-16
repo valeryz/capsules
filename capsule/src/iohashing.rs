@@ -36,7 +36,7 @@ pub struct HashBundle {
 fn file_hash(filename: &Path) -> Result<String> {
     const BUFSIZE: usize = 4096;
     let mut acc = Sha256::new();
-    let mut f = File::open(filename).with_context(|| format!("Reading input file {:?}", filename))?;
+    let mut f = File::open(filename).with_context(|| format!("Reading input file '{}'", filename.to_string_lossy()))?;
     let mut buf: [u8; BUFSIZE] = [0; BUFSIZE];
     loop {
         let rd = f.read(&mut buf)?;
@@ -128,7 +128,7 @@ pub struct FileOutput {
 #[derive(PartialOrd, Ord, PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
 pub enum Output {
     File(FileOutput),
-    ExitCode(usize),
+    ExitCode(i32),
     Stdout(Vec<u8>),
     Stderr(Vec<u8>),
 }
