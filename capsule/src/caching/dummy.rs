@@ -19,7 +19,7 @@ impl CachingBackend for DummyBackend {
     async fn lookup(&self, _inputs: &HashBundle) -> Result<Option<InputOutputBundle>> {
         // Always return a cache miss.
         Ok(None)
-    }    
+    }
 
     #[allow(unused_variables)]
     async fn write(&self, inputs: HashBundle, outputs: OutputHashBundle) -> Result<()> {
