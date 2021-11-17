@@ -90,7 +90,6 @@ impl<'a> Capsule<'a> {
             .with_context(|| format!("Hashing outputs of capsule '{}'", capsule_id))
     }
 
-    // TODO: WTF is that thing!
     pub fn run_capsule(&self, program_run: &mut bool) -> Result<(HashBundle, OutputHashBundle, ExitStatus)> {
         self.read_inputs().and_then(|inputs| {
             self.execute_command().and_then(|mut child| {

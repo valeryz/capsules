@@ -3,13 +3,13 @@ use anyhow::{Context, Result};
 use async_trait::async_trait;
 use hyperx::header::CacheDirective;
 use rusoto_core::region::Region;
-use rusoto_s3::{GetObjectOutput, GetObjectRequest, PutObjectRequest, S3Client, S3 as _};
-use serde::{Serialize, Deserialize};
+use rusoto_s3::{GetObjectRequest, PutObjectRequest, S3Client, S3 as _};
 use serde_cbor;
+use tokio::io::AsyncReadExt as _;
 
 use crate::caching::backend::CachingBackend;
 use crate::config::Config;
-use crate::iohashing::{HashBundle, OutputHashBundle};
+use crate::iohashing::{HashBundle, OutputHashBundle, InputOutputBundle};
 
 pub struct S3Backend {
     /// S3 bucket
@@ -46,16 +46,39 @@ impl S3Backend {
     }
 }
 
-#[derive(Serialize, Deserialize)]
-struct InputOutputBundle {
-    inputs: HashBundle,
-    outputs: OutputHashBundle,
-}
-
 #[async_trait]
 impl CachingBackend for S3Backend {
     fn name(&self) -> &'static str {
         "s3"
+    }
+
+    async fn lookup(&self, inputs: &HashBundle) -> Result<Option<InputOutputBundle>> {
+        let key = format!("{}:{}", self.capsule_id, inputs.hash);
+        let request = GetObjectRequest {
+            bucket: self.bucket.clone(),
+            key,
+            ..Default::default()
+        };
+        let response = self.client
+            .get_object(request)
+            .await;
+        match response {
+            Err(rusoto_core::RusotoError::Service(rusoto_s3::GetObjectError::NoSuchKey(_))) => {
+                Ok(None)  // Cache miss
+            },
+            Err(e) => Err(e.into()),
+            Ok(response) => {
+                let body = response.body.context("No reponse body")?;
+                let mut body_reader = body.into_async_read();
+                let mut body = Vec::new();
+                body_reader
+                    .read_to_end(&mut body)
+                    .await
+                    .context("failed to read HTTP body")?;
+                let bundle = serde_cbor::from_slice(&body).context("Cannot deserialize output")?;
+                Ok(Some(bundle))
+            }
+        }
     }
 
     async fn write(&self, inputs: HashBundle, outputs: OutputHashBundle) -> Result<()> {

@@ -139,6 +139,12 @@ pub struct OutputHashBundle {
     pub hash_details: Vec<(Output, String)>,
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct InputOutputBundle {
+    pub inputs: HashBundle,
+    pub outputs: OutputHashBundle,
+}
+
 /// Output set is the set of all process outputs.
 #[derive(Default)]
 pub struct OutputSet {
