@@ -47,14 +47,11 @@ async fn main() -> Result<()> {
     // Running of the capsule may fail. It may fail either before the wrapped program
     // was run, or after. This flag says whether the program was actually run.
     let mut program_run = false;
-    let result = capsule.run_capsule(&mut program_run);
+    let result = capsule.run_capsule(&mut program_run).await;
 
     match result {
-        Ok((inputs, outputs, exit_status)) => {
-            capsule
-                .write_cache(inputs, outputs)
-                .await
-                .unwrap_or_else(|err| eprintln!("Couldn't write to cache: {}", err));
+        Ok(exit_status) => {
+            // Pass the exit code of the wrapped program as our exit code.
             process::exit(exit_status.into_raw());
         }
         Err(err) => {

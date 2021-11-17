@@ -2,6 +2,7 @@ use anyhow::anyhow;
 use anyhow::{Context, Result};
 
 use glob::glob;
+use indoc::indoc;
 use std::process::{Child, Command, ExitStatus};
 
 use crate::caching::backend::CachingBackend;
@@ -90,21 +91,69 @@ impl<'a> Capsule<'a> {
             .with_context(|| format!("Hashing outputs of capsule '{}'", capsule_id))
     }
 
-    pub fn run_capsule(&self, program_run: &mut bool) -> Result<(HashBundle, OutputHashBundle, ExitStatus)> {
-        self.read_inputs().and_then(|inputs| {
-            self.execute_command().and_then(|mut child| {
-                // We just need to tell our caller whether we succeeded in running the program.
-                // this happens as soon as we have a child program.
-                *program_run = true;
-                child
-                    .wait()
-                    .with_context(|| "Waiting for child")
-                    .and_then(|exit_status| {
-                        self.read_outputs(exit_status.code())
-                            .map(|outputs| (inputs, outputs, exit_status))
-                    })
-            })
-        })
+    fn equal_outputs(left: &OutputHashBundle, right: &OutputHashBundle) -> bool {
+        left.hash == right.hash
+    }
+
+    pub async fn run_capsule(&self, program_run: &mut bool) -> Result<ExitStatus> {
+        let inputs = self.read_inputs()?;
+        let lookup_result = self.caching_backend.lookup(&inputs).await?;
+        let cache_hit = lookup_result.is_some();
+        if cache_hit {
+            println!(
+                "Cache hit on {}: ignoring and proceeding with execution",
+                self.capsule_id()
+            );
+        }
+
+        // TODO: skip execution in blue pill on cache hit.
+
+        let mut child = self.execute_command()?;
+        // Having executed the command, just need to tell our caller
+        // whether we succeeded in running the program.  this happens
+        // as soon as we have a child program.
+        *program_run = true;
+        let exit_status = child.wait().with_context(|| "Waiting for child")?;
+
+        // Now that we got the exit code, we try hard to pass it back to exit.
+        // If we fail along the way, we should complain, but still continue.
+        match self.read_outputs(exit_status.code()) {
+            Ok(outputs) => {
+                let non_determinism = cache_hit
+                    && lookup_result.as_ref().map_or(false, |lookup_result| {
+                        Self::equal_outputs(&lookup_result.outputs, &outputs)
+                    });
+
+                if non_determinism {
+                    eprintln!(
+                        indoc! {"
+                        Non-determinism detected:
+                        Old: {:?}
+                        vs
+                        New: {:?}\n"},
+                        &(lookup_result.unwrap().outputs),
+                        &outputs
+                    );
+                }
+
+                // TODO: make these truly async simultaneous to onw another.
+
+                // We try logging for observability, but we will not stop it if there was a problem,
+                // only try complaining about it.
+                self.logger
+                    .log(&inputs, &outputs, non_determinism)
+                    .unwrap_or_else(|err| {
+                        eprintln!("Failed to log results for observability: {}", err);
+                    });
+                self.caching_backend.write(inputs, outputs).await.unwrap_or_else(|err| {
+                    eprintln!("Failed to write entry to cache: {}", err);
+                });
+            }
+            Err(err) => {
+                eprintln!("Failed to get command outputs: {}", err);
+            }
+        }
+        Ok(exit_status)
     }
 
     pub fn execute_command(&self) -> Result<Child> {
@@ -116,17 +165,6 @@ impl<'a> Capsule<'a> {
                 .spawn()
                 .with_context(|| "Spawning command")
         }
-    }
-
-    pub async fn write_cache(&self, inputs: HashBundle, outputs: OutputHashBundle) -> Result<()> {
-        // We try logging for observability, but we will not stop it if there was a problem,
-        // only try complaining about it.
-        self.logger.log(&inputs, &outputs).unwrap_or_else(|err| {
-            eprintln!("Failed to log results for observability: {}", err);
-        });
-        // Finally, we'll write our results to the caching backend.
-        self.caching_backend.write(inputs, outputs).await?;
-        Ok(())
     }
 }
 
@@ -292,7 +330,12 @@ mod tests {
         let capsule = Capsule::new(&config, backend, Box::new(Dummy));
         let inputs = capsule.read_inputs();
         assert_eq!(
-            inputs.unwrap().hash_details.into_iter().map(|x| x.0).collect::<Vec<_>>(),
+            inputs
+                .unwrap()
+                .hash_details
+                .into_iter()
+                .map(|x| x.0)
+                .collect::<Vec<_>>(),
             [
                 Input::File(root.join("123").into()),
                 Input::File(root.join("dir1").join("111").into()),

@@ -9,7 +9,7 @@ use tokio::io::AsyncReadExt as _;
 
 use crate::caching::backend::CachingBackend;
 use crate::config::Config;
-use crate::iohashing::{HashBundle, OutputHashBundle, InputOutputBundle};
+use crate::iohashing::{HashBundle, InputOutputBundle, OutputHashBundle};
 
 pub struct S3Backend {
     /// S3 bucket
@@ -44,6 +44,17 @@ impl S3Backend {
             capsule_id: config.capsule_id.as_deref().unwrap().to_string(),
         })
     }
+
+    fn normalize_key(&self, key: &str) -> String {
+        format!(
+            "{}/{}/{}/{}/{}",
+            &self.capsule_id,
+            &key[0..1],
+            &key[1..2],
+            &key[2..3],
+            &key
+        )
+    }
 }
 
 #[async_trait]
@@ -53,19 +64,17 @@ impl CachingBackend for S3Backend {
     }
 
     async fn lookup(&self, inputs: &HashBundle) -> Result<Option<InputOutputBundle>> {
-        let key = format!("{}:{}", self.capsule_id, inputs.hash);
+        let key = self.normalize_key(&inputs.hash);
         let request = GetObjectRequest {
             bucket: self.bucket.clone(),
             key,
             ..Default::default()
         };
-        let response = self.client
-            .get_object(request)
-            .await;
+        let response = self.client.get_object(request).await;
         match response {
             Err(rusoto_core::RusotoError::Service(rusoto_s3::GetObjectError::NoSuchKey(_))) => {
-                Ok(None)  // Cache miss
-            },
+                Ok(None) // Cache miss
+            }
             Err(e) => Err(e.into()),
             Ok(response) => {
                 let body = response.body.context("No reponse body")?;
@@ -82,11 +91,8 @@ impl CachingBackend for S3Backend {
     }
 
     async fn write(&self, inputs: HashBundle, outputs: OutputHashBundle) -> Result<()> {
-        let io_bundle = InputOutputBundle {
-            inputs,
-            outputs,
-        };
-        let key = format!("{}:{}", self.capsule_id, &io_bundle.inputs.hash);
+        let io_bundle = InputOutputBundle { inputs, outputs };
+        let key = self.normalize_key(&io_bundle.inputs.hash);
         // Prepare data for S3 writing.
         let data = serde_cbor::to_vec(&io_bundle)?;
         let data_len = data.len();
@@ -109,4 +115,3 @@ impl CachingBackend for S3Backend {
         Ok(())
     }
 }
-
