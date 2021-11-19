@@ -108,6 +108,7 @@ impl<'a> Capsule<'a> {
 
         // TODO: skip execution in blue pill on cache hit.
 
+        eprintln!("Executing command: {:?}", self.config.command_to_run);
         let mut child = self.execute_command()?;
         // Having executed the command, just need to tell our caller
         // whether we succeeded in running the program.  this happens

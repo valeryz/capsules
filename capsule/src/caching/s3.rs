@@ -75,7 +75,11 @@ impl CachingBackend for S3Backend {
             Err(rusoto_core::RusotoError::Service(rusoto_s3::GetObjectError::NoSuchKey(_))) => {
                 Ok(None) // Cache miss
             }
-            Err(e) => Err(e.into()),
+            Err(rusoto_core::RusotoError::Unknown(resp)) if resp.status == 404 => {
+                // No such bucket
+                Ok(None)  // Cache miss
+            }
+            Err(e) =>  Err(e.into()),
             Ok(response) => {
                 let body = response.body.context("No reponse body")?;
                 let mut body_reader = body.into_async_read();

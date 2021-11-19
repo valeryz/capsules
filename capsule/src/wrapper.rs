@@ -12,7 +12,7 @@ where
 {
     let program_cstring = CString::new(program_name)?;
     let args: Vec<String> = args.collect();
-    println!("Executing {:?}", args);
+    println!("Fallback exec'ing {:?}", args);
     let arg_cstrings = args
         .into_iter()
         .map(CString::new)

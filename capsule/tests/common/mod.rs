@@ -1,4 +1,5 @@
 use assert_cmd;
+use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process;
 use std::{thread, time};
@@ -38,7 +39,7 @@ pub fn setup() -> SetupData {
         .spawn()
         .expect("Minio failed to start");
     // TODO: Wait until we can connect to the port, instead of sleeping.
-    thread::sleep(time::Duration::from_millis(100));
+    thread::sleep(time::Duration::from_millis(1000));
     SetupData {
         minio,
         directory: Some(directory),
@@ -46,9 +47,14 @@ pub fn setup() -> SetupData {
 }
 
 pub fn capsule(args: &[&str]) {
-    assert_cmd::Command::cargo_bin("capsule")
+    let output = assert_cmd::Command::cargo_bin("capsule")
         .expect("Couldn't find capsule target")
+        .env("CAPSULE_ARGS",
+             format!("--s3_bucket=capsule-test --s3_endpoint=http://127.0.0.1:{}", MINIO_PORT))
         .args(args)
         .output()
         .expect("Couldn't execute capsule");
+    io::stdout().write_all(&output.stdout).unwrap();
+    io::stderr().write_all(&output.stderr).unwrap();
+    assert!(output.status.success());
 }
