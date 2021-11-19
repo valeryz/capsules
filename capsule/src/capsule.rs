@@ -122,7 +122,7 @@ impl<'a> Capsule<'a> {
             Ok(outputs) => {
                 let non_determinism = cache_hit
                     && lookup_result.as_ref().map_or(false, |lookup_result| {
-                        Self::equal_outputs(&lookup_result.outputs, &outputs)
+                        !Self::equal_outputs(&lookup_result.outputs, &outputs)
                     });
 
                 if non_determinism {
