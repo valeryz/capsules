@@ -1,4 +1,5 @@
 use assert_cmd;
+use std::fs;
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process;
@@ -28,6 +29,7 @@ impl SetupData {
 
 pub fn setup() -> SetupData {
     let directory = tempfile::tempdir().expect("Failed to create temp dir");
+    fs::create_dir_all(directory.path().join("capsule-test"))?;
     let minio = process::Command::new("minio")
         .args([
             "server",
