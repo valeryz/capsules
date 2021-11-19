@@ -41,7 +41,7 @@ pub fn setup() -> SetupData {
         .spawn()
         .expect("Minio failed to start");
     // TODO: Wait until we can connect to the port, instead of sleeping.
-    thread::sleep(time::Duration::from_millis(1000));
+    thread::sleep(time::Duration::from_millis(1_000));
     SetupData {
         minio,
         directory: Some(directory),
@@ -51,11 +51,10 @@ pub fn setup() -> SetupData {
 pub fn capsule(args: &[&str]) {
     let output = assert_cmd::Command::cargo_bin("capsule")
         .expect("Couldn't find capsule target")
-        .env("AWS_DEFAULT_REGION", "eu-central-1")
         .env("AWS_ACCESS_KEY_ID", "minioadmin")
         .env("AWS_SECRET_ACCESS_KEY", "minioadmin")
         .env("CAPSULE_ARGS",
-             format!("--s3_bucket=capsule-test --s3_endpoint=http://127.0.0.1:{}", MINIO_PORT))
+             format!("--s3_bucket=capsule-test --s3_region=eu-central-1 --s3_endpoint=http://127.0.0.1:{}", MINIO_PORT))
         .args(args)
         .output()
         .expect("Couldn't execute capsule");
