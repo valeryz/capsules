@@ -17,7 +17,8 @@ pub struct SetupData {
 impl Drop for SetupData {
     fn drop(&mut self) {
         self.minio.kill().expect("Failed to stop Minio");
-        thread::sleep(time::Duration::from_millis(2_000));
+        self.minio.wait().expect("Error waiting for minio to stop");
+        // thread::sleep(time::Duration::from_millis(2_000));
         self.directory.take().map(|d| d.close());
     }
 }
