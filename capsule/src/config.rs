@@ -223,6 +223,24 @@ impl Config {
                     .takes_value(true)
                     .multiple_occurrences(true),
             )
+            .arg(
+                Arg::new("s3_bucket")
+                    .long("s3_bucket")
+                    .about("S3 bucket name")
+                    .takes_value(true),
+            )
+            .arg(
+                Arg::new("s3_endpoint")
+                    .long("s3_endpoint")
+                    .about("S3 endpoint")
+                    .takes_value(true),
+            )
+            .arg(
+                Arg::new("s3_region")
+                    .long("s3_region")
+                    .about("S3 region")
+                    .takes_value(true),
+            )
             .arg(Arg::new("command_to_run").last(true));
 
         let match_sources = [
