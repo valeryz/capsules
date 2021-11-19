@@ -51,6 +51,7 @@ pub fn setup() -> SetupData {
 pub fn capsule(args: &[&str]) {
     let output = assert_cmd::Command::cargo_bin("capsule")
         .expect("Couldn't find capsule target")
+        .env("AWS_DEFAULT_REGION", "eu-central-1")
         .env("AWS_ACCESS_KEY_ID", "minioadmin")
         .env("AWS_SECRET_ACCESS_KEY", "minioadmin")
         .env("CAPSULE_ARGS",
