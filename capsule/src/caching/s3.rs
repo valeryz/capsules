@@ -112,10 +112,7 @@ impl CachingBackend for S3Backend {
         };
 
         // Write data to S3 (asynchronously).
-        self.client
-            .put_object(request)
-            .await
-            .context("failed to put cache entry")?;
+        self.client.put_object(request).await?;
         Ok(())
     }
 }
