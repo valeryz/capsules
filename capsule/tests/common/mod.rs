@@ -29,7 +29,7 @@ impl SetupData {
 
 pub fn setup() -> SetupData {
     let directory = tempfile::tempdir().expect("Failed to create temp dir");
-    fs::create_dir_all(directory.path().join("capsule-test"))?;
+    fs::create_dir_all(directory.path().join("minio").join("capsule-test")).unwrap();
     let minio = process::Command::new("minio")
         .args([
             "server",
@@ -51,6 +51,8 @@ pub fn setup() -> SetupData {
 pub fn capsule(args: &[&str]) {
     let output = assert_cmd::Command::cargo_bin("capsule")
         .expect("Couldn't find capsule target")
+        .env("AWS_ACCESS_KEY_ID", "minioadmin")
+        .env("AWS_SECRET_ACCESS_KEY", "minioadmin")
         .env("CAPSULE_ARGS",
              format!("--s3_bucket=capsule-test --s3_endpoint=http://127.0.0.1:{}", MINIO_PORT))
         .args(args)
