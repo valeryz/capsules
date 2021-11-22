@@ -109,6 +109,7 @@ dependencies = [
  "indoc",
  "itertools",
  "nix",
+ "rand",
  "reqwest",
  "rusoto_core",
  "rusoto_s3",
