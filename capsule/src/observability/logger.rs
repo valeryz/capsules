@@ -1,13 +1,13 @@
 use crate::iohashing::{HashBundle, OutputHashBundle};
 use anyhow::Result;
+use async_trait::async_trait;
 
+#[async_trait]
 pub trait Logger {
-    fn log(
+    async fn log(
         &self,
-        _inputs_bundle: &HashBundle,
-        _output_bundle: &OutputHashBundle,
-        _non_determinism: bool,
-    ) -> Result<()> {
-        Ok(())
-    }
+        inputs_bundle: &HashBundle,
+        output_bundle: &OutputHashBundle,
+        non_determinism: bool,
+    ) -> Result<()>;
 }

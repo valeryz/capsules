@@ -137,12 +137,14 @@ impl<'a> Capsule<'a> {
                     );
                 }
 
-                // TODO: make these truly async simultaneous to onw another.
+                // TODO: make these truly async simultaneous to onw another. It is atm complicated
+                // because caching_backend.write moves its args.
 
                 // We try logging for observability, but we will not stop it if there was a problem,
                 // only try complaining about it.
                 self.logger
                     .log(&inputs, &outputs, non_determinism)
+                    .await
                     .unwrap_or_else(|err| {
                         eprintln!("Failed to log results for observability: {}", err);
                     });

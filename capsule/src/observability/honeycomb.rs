@@ -4,6 +4,7 @@ use crate::{
 };
 use anyhow::anyhow;
 use anyhow::Result;
+use async_trait::async_trait;
 use reqwest;
 use serde_json;
 
@@ -117,8 +118,9 @@ fn output_hash_details_to_json(bundle: &OutputHashBundle) -> serde_json::Value {
     serde_json::Value::Object(json_map)
 }
 
+#[async_trait]
 impl Logger for Honeycomb {
-    fn log(&self, inputs_bundle: &HashBundle, output_bundle: &OutputHashBundle, non_determinism: bool) -> Result<()> {
+    async fn log(&self, inputs_bundle: &HashBundle, output_bundle: &OutputHashBundle, non_determinism: bool) -> Result<()> {
         let mut map = serde_json::Map::new();
         map.insert("trace.trace_id".into(), self.trace_id.clone().into());
         map.insert("trace.span_id".into(), self.capsule_id.clone().into());
@@ -136,12 +138,13 @@ impl Logger for Honeycomb {
         for (key, value) in &self.extra_kv {
             map.insert(key.to_owned(), value.to_owned().into());
         }
-        let client = reqwest::blocking::Client::new();
+        let client = reqwest::Client::new();
         client
             .post(format!("https://api.honeycomb.io/1/events/{}", self.dataset))
             .header("X-Honeycomb-Team", &self.honeycomb_token)
             .json(&map)
-            .send()?;
+            .send()
+            .await?;
         Ok(())
     }
 }
