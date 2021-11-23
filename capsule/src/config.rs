@@ -279,6 +279,7 @@ impl Config {
             config.merge(&mut single_config);
         }
 
+        config.backend = Backend::Dummy;
         for matches in match_sources {
             if let Some(inputs) = matches.values_of("input") {
                 config.input_files.extend(inputs.map(|x| x.to_owned()));
@@ -301,7 +302,6 @@ impl Config {
             if let Some(command) = matches.values_of("command_to_run") {
                 config.command_to_run = command.map(|x| x.to_owned()).collect();
             }
-            config.backend = Backend::Dummy;
             if let Some(backend) = matches.value_of("backend") {
                 if backend == "s3" {
                     config.backend = Backend::S3;
