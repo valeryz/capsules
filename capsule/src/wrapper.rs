@@ -6,14 +6,17 @@ use std::ffi::CString;
 
 static USAGE: &str = "Usage: capsule <capsule arguments ...> -- command [<arguments>]";
 
-pub fn exec_program<I>(program_name: String, args: I) -> Result<()>
+fn exec_program<I>(program_name: String, args: I) -> Result<()>
 where
     I: Iterator<Item = String>,
 {
     let program_cstring = CString::new(program_name)?;
     let args: Vec<String> = args.collect();
-    println!("Executing {:?}", args);
-    let arg_cstrings = args.into_iter().map(CString::new).collect::<Result<Vec<_>, _>>()?;
+    println!("Fallback exec'ing {:?}", args);
+    let arg_cstrings = args
+        .into_iter()
+        .map(CString::new)
+        .collect::<Result<Vec<_>, _>>()?;
 
     match execvp(&program_cstring, &arg_cstrings) {
         Ok(_) => unreachable!(),
@@ -22,7 +25,7 @@ where
 }
 
 /// Execute a given command transparently passing the original arguments.
-pub fn execute() -> Result<()> {
+pub fn exec() -> Result<()> {
     let mut args = env::args();
     let argv0 = &mut args.next();
     if argv0.is_none() {
@@ -36,7 +39,10 @@ pub fn execute() -> Result<()> {
     }
 
     if let Some(program_name) = args.next() {
-        exec_program(program_name.clone(), itertools::chain!([program_name], args))
+        exec_program(
+            program_name.clone(),
+            itertools::chain!([program_name], args),
+        )
     } else {
         Err(anyhow!(USAGE.to_string()))
     }

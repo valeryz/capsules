@@ -1,59 +1,69 @@
-use anyhow::anyhow;
 use anyhow::Result;
 use capsule::caching::backend::CachingBackend;
-use capsule::caching::honeycomb;
-use capsule::caching::stdio;
+use capsule::caching::dummy;
+use capsule::caching::s3;
 use capsule::capsule::Capsule;
 use capsule::config::{Backend, Config};
+use capsule::observability::dummy::Dummy as DummyLogger;
+use capsule::observability::honeycomb;
+use capsule::observability::logger::Logger;
 use capsule::wrapper;
 use std::env;
+use std::os::unix::prelude::ExitStatusExt;
+use std::process;
 use std::path::Path;
 
-fn capsule_main() -> Result<()> {
-    let default_toml = std::env::var("HOME").ok().map(|home| home + "/.capsules.toml");
+fn create_capsule(config: &Config) -> Result<Capsule<'_>> {
+    // First, instantiate our caching backend (S3, Dummy, or possibly other in the future).
+    let backend: Box<dyn CachingBackend> = match config.backend {
+        Backend::Dummy => Box::new(dummy::DummyBackend {
+            verbose_output: config.verbose,
+            capsule_id: config.capsule_id.as_ref().cloned().unwrap(),
+        }),
+        Backend::S3 => Box::new(s3::S3Backend::from_config(config)?),
+    };
+    // Instantiate our logger (for observability)
+    let logger: Box<dyn Logger> = if config.honeycomb_dataset.is_some() {
+        Box::new(honeycomb::Honeycomb::from_config(config)?)
+    } else {
+        Box::new(DummyLogger)
+    };
+    // Create the capsule with the caching backend and logger.
+    Ok(Capsule::new(config, backend, logger))
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let default_toml = std::env::var("HOME")
+        .ok()
+        .map(|home| home + "/.capsules.toml");
     let config = Config::new(
         env::args(),
         default_toml.as_ref().map(Path::new),
         Some(Path::new("Capsule.toml")),
     )?;
-    let backend: Box<dyn CachingBackend> = match config.backend {
-        Backend::Stdio => Box::new(stdio::StdioBackend {
-            verbose_output: config.verbose,
-            capsule_id: config
-                .capsule_id
-                .clone()
-                .ok_or_else(|| anyhow!("no capsule_id"))?,
-        }),
-        Backend::Honeycomb => Box::new(honeycomb::HoneycombBackend {
-            dataset: config
-                .honeycomb_dataset
-                .clone()
-                .ok_or_else(|| anyhow!("Honeycomb dataset not specified"))?,
-            honeycomb_token: config
-                .honeycomb_token
-                .clone()
-                .ok_or_else(|| anyhow!("Honeycomb Token not specified"))?,
-            capsule_id: config
-                .capsule_id
-                .clone()
-                .ok_or_else(|| anyhow!("Capsule_id is unknown"))?,
-            trace_id: config
-                .honeycomb_trace_id
-                .clone()
-                .ok_or_else(|| anyhow!("Honeycomb Trace ID is not specified"))?,
-            parent_id: config.honeycomb_parent_id.clone(),
-            extra_kv: config.get_honeycomb_kv()?,
-        }),
-    };
-    let mut capsule = Capsule::new(&config, backend);
-    capsule.read_inputs()?;
-    capsule.write_cache()
-}
+    let capsule = create_capsule(&config)?;
 
-fn main() -> Result<()> {
-    capsule_main().unwrap_or_else(|e| eprintln!("Capsule error: {:#}", e));
-    // TODO: this goes away! - or maybe not!
-    wrapper::execute()
+    // Running of the capsule may fail. It may fail either before the wrapped program
+    // was run, or after. This flag says whether the program was actually run.
+    let mut program_run = false;
+    let result = capsule.run_capsule(&mut program_run).await;
 
-    // TODO: pass through the exit code from the wrapped program.
+    match result {
+        Ok(exit_status) => {
+            // Pass the exit code of the wrapped program as our exit code.
+            process::exit(exit_status.into_raw());
+        }
+        Err(err) => {
+            eprintln!("Capsule error: {:#}", err);
+            // If we failed to run the program, try falling back to
+            // just 'exec' behavior without any results caching.
+            if !program_run {
+                wrapper::exec().expect("Execution of wrapped program failed");
+                unreachable!()
+            } else {
+                Err(err)
+            }
+        }
+    }
 }
