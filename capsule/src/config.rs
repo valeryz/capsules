@@ -22,8 +22,8 @@ pub enum Milestone {
 #[derivative(Default)]
 pub enum Backend {
     #[derivative(Default)]
-    Stdio,
-    Honeycomb,
+    Dummy,  // No backend means dummy.
+    S3,
 }
 
 #[derive(Debug, Deserialize, Derivative)]
@@ -74,6 +74,15 @@ pub struct Config {
     // values of --honeycomb_kv flag, to be accessed via a method.
     #[serde(default)]
     honeycomb_kv: Vec<String>,
+
+    #[serde(default)]
+    pub s3_bucket: Option<String>,
+
+    #[serde(default)]
+    pub s3_endpoint: Option<String>,
+
+    #[serde(default)]
+    pub s3_region: Option<String>,
 }
 
 impl Config {
@@ -109,7 +118,7 @@ impl Config {
         if let Some(default_toml) = default_toml {
             if let Ok(contents) = std::fs::read_to_string(default_toml) {
                 let home_config = toml::from_str::<Config>(&contents)
-                    .with_context(|| format!("Parsing default config {:?}", default_toml))?;
+                    .with_context(|| format!("Parsing default config '{}'", default_toml.to_string_lossy()))?;
                 config = home_config;
             }
         }
@@ -181,7 +190,7 @@ impl Config {
                     .short('b')
                     .long("backend")
                     .about("which backend to use")
-                    .possible_values(&["stdio", "honeycomb"]),
+                    .possible_values(&["dummy", "s3"]),
             )
             .arg(
                 Arg::new("honeycomb_dataset")
@@ -213,6 +222,24 @@ impl Config {
                     .about("Honeycomb Extra Key-Value")
                     .takes_value(true)
                     .multiple_occurrences(true),
+            )
+            .arg(
+                Arg::new("s3_bucket")
+                    .long("s3_bucket")
+                    .about("S3 bucket name")
+                    .takes_value(true),
+            )
+            .arg(
+                Arg::new("s3_endpoint")
+                    .long("s3_endpoint")
+                    .about("S3 endpoint")
+                    .takes_value(true),
+            )
+            .arg(
+                Arg::new("s3_region")
+                    .long("s3_region")
+                    .about("S3 region")
+                    .takes_value(true),
             )
             .arg(Arg::new("command_to_run").last(true));
 
@@ -274,9 +301,10 @@ impl Config {
             if let Some(command) = matches.values_of("command_to_run") {
                 config.command_to_run = command.map(|x| x.to_owned()).collect();
             }
+            config.backend = Backend::Dummy;
             if let Some(backend) = matches.value_of("backend") {
-                if backend == "honeycomb" {
-                    config.backend = Backend::Honeycomb;
+                if backend == "s3" {
+                    config.backend = Backend::S3;
                 }
             }
             if let Some(value) = matches.value_of("honeycomb_dataset") {
@@ -293,6 +321,15 @@ impl Config {
             }
             if let Some(values) = matches.values_of("honeycomb_kv") {
                 config.honeycomb_kv.extend(values.map(|x| x.to_owned()));
+            }
+            if let Some(value) = matches.value_of("s3_bucket") {
+                config.s3_bucket = Some(value.into());
+            }
+            if let Some(value) = matches.value_of("s3_region") {
+                config.s3_region = Some(value.into());
+            }
+            if let Some(value) = matches.value_of("s3_endpoint") {
+                config.s3_endpoint = Some(value.into());
             }
         }
 

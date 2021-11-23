@@ -1,10 +1,16 @@
-use crate::caching::backend::CachingBackend;
+use crate::{
+    config::Config,
+    iohashing::{HashBundle, Input, Output, OutputHashBundle},
+};
+use anyhow::anyhow;
 use anyhow::Result;
+use async_trait::async_trait;
 use reqwest;
-use crate::iohashing::{HashBundle, OutputHashBundle, Input, Output};
 use serde_json;
 
-pub struct HoneycombBackend {
+use super::logger::Logger;
+
+pub struct Honeycomb {
     /// Honeycomb dataset ('capsule', or 'capsule-test' etc.)
     pub dataset: String,
 
@@ -22,6 +28,31 @@ pub struct HoneycombBackend {
 
     /// Extra Key-values.
     pub extra_kv: Vec<(String, String)>,
+}
+
+impl Honeycomb {
+    pub fn from_config(config: &Config) -> Result<Self> {
+        Ok(Self {
+            dataset: config
+                .honeycomb_dataset
+                .clone()
+                .ok_or_else(|| anyhow!("Honeycomb dataset not specified"))?,
+            honeycomb_token: config
+                .honeycomb_token
+                .clone()
+                .ok_or_else(|| anyhow!("Honeycomb Token not specified"))?,
+            capsule_id: config
+                .capsule_id
+                .clone()
+                .ok_or_else(|| anyhow!("Capsule_id is unknown"))?,
+            trace_id: config
+                .honeycomb_trace_id
+                .clone()
+                .ok_or_else(|| anyhow!("Honeycomb Trace ID is not specified"))?,
+            parent_id: config.honeycomb_parent_id.clone(),
+            extra_kv: config.get_honeycomb_kv()?,
+        })
+    }
 }
 
 /// Max number of JSON entries in the dict. We need to cap it so that
@@ -60,7 +91,7 @@ fn hash_details_to_json(bundle: &HashBundle) -> serde_json::Value {
 /// Convert hash deails (with each filename and tool_tag separately) to JSON.
 fn output_hash_details_to_json(bundle: &OutputHashBundle) -> serde_json::Value {
     let mut file_map = serde_json::Map::<String, serde_json::Value>::new();
-    let mut exit_code : Option<usize> = None;
+    let mut exit_code: Option<i32> = None;
     for (output, hash) in bundle.hash_details.iter() {
         // Cap the size of the resulting JSON.
         if file_map.len() > MAX_JSON_ENTRIES {
@@ -70,11 +101,11 @@ fn output_hash_details_to_json(bundle: &OutputHashBundle) -> serde_json::Value {
         match output {
             Output::File(file_output) => {
                 file_map.insert(format!("{}", file_output.filename.to_string_lossy()), value);
-            },
+            }
             Output::ExitCode(code) => {
                 exit_code = Some(*code);
-            },
-            _ => { }
+            }
+            _ => {}
         }
     }
     let mut json_map = serde_json::Map::<String, serde_json::Value>::new();
@@ -87,31 +118,33 @@ fn output_hash_details_to_json(bundle: &OutputHashBundle) -> serde_json::Value {
     serde_json::Value::Object(json_map)
 }
 
-impl CachingBackend for HoneycombBackend {
-    fn name(&self) -> &'static str {
-        "honeycomb"
-    }
-
-    fn write(&self, inputs_bundle: &HashBundle, output_bundle: &OutputHashBundle) -> Result<()> {
+#[async_trait]
+impl Logger for Honeycomb {
+    async fn log(&self, inputs_bundle: &HashBundle, output_bundle: &OutputHashBundle, non_determinism: bool) -> Result<()> {
         let mut map = serde_json::Map::new();
         map.insert("trace.trace_id".into(), self.trace_id.clone().into());
         map.insert("trace.span_id".into(), self.capsule_id.clone().into());
+        map.insert("non_determinism".into(), non_determinism.into());
         map.insert("inputs_hash".into(), inputs_bundle.hash.clone().into());
         map.insert("inputs_hash_details".into(), hash_details_to_json(inputs_bundle));
         if let Some(value) = &self.parent_id {
             map.insert("trace.parent_id".into(), value.clone().into());
         }
-        map.insert("outputs_hash_details".into(), output_hash_details_to_json(output_bundle));
+        map.insert(
+            "outputs_hash_details".into(),
+            output_hash_details_to_json(output_bundle),
+        );
         map.insert("outputs_hash".into(), output_bundle.hash.clone().into());
         for (key, value) in &self.extra_kv {
             map.insert(key.to_owned(), value.to_owned().into());
         }
-        let client = reqwest::blocking::Client::new();
+        let client = reqwest::Client::new();
         client
             .post(format!("https://api.honeycomb.io/1/events/{}", self.dataset))
             .header("X-Honeycomb-Team", &self.honeycomb_token)
             .json(&map)
-            .send()?;
+            .send()
+            .await?;
         Ok(())
     }
 }

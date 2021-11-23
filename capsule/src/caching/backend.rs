@@ -1,14 +1,18 @@
 use anyhow::Result;
+use async_trait::async_trait;
 use std::fmt;
 
-use crate::iohashing::{HashBundle, OutputHashBundle};
+use crate::iohashing::{HashBundle, OutputHashBundle, InputOutputBundle};
 
+#[async_trait]
 pub trait CachingBackend {
     fn name(&self) -> &'static str {
         "backend"
     }
 
-    fn write(&self, inputs_bundle: &HashBundle, output_bundle: &OutputHashBundle) -> Result<()>;
+    async fn lookup(&self, inputs: &HashBundle) -> Result<Option<InputOutputBundle>>;
+
+    async fn write(&self, _inputs: HashBundle, _outputs: OutputHashBundle) -> Result<()>;
 }
 
 impl fmt::Debug for dyn CachingBackend {
