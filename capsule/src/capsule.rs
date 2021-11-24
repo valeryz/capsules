@@ -72,6 +72,9 @@ impl<'a> Capsule<'a> {
         for file_pattern in &self.config.output_files {
             for file in glob(file_pattern)? {
                 let file = file?;
+                if file.is_dir() {
+                    continue;
+                }
                 if file.is_file() {
                     outputs.add_output(Output::File(FileOutput {
                         filename: file.to_path_buf(),
