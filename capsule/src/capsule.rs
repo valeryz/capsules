@@ -35,10 +35,6 @@ impl<'a> Capsule<'a> {
         self.config.capsule_id.as_ref().cloned().unwrap()
     }
 
-    pub fn hash(&self) -> Result<String> {
-        self.read_inputs().map(|inputs| inputs.hash)
-    }
-
     pub fn read_inputs(&self) -> Result<HashBundle> {
         let mut inputs = InputSet::default();
         for file_pattern in &self.config.input_files {
@@ -191,7 +187,7 @@ mod tests {
         let backend = Box::new(dummy::DummyBackend::default());
         let config = Config::new(["capsule", "-c", "wtf", "--", "/bin/echo"], None, None).unwrap();
         let capsule = Capsule::new(&config, backend, Box::new(Dummy));
-        assert_eq!(capsule.hash().unwrap(), EMPTY_SHA256);
+        assert_eq!(capsule.read_inputs().unwrap().hash, EMPTY_SHA256);
     }
 
     #[test]
