@@ -42,16 +42,11 @@ impl<'a> Capsule<'a> {
     pub fn read_inputs(&self) -> Result<HashBundle> {
         let mut inputs = InputSet::default();
         for file_pattern in &self.config.input_files {
-            let mut count = 0;
             for file in glob(file_pattern)? {
                 let file = file?;
                 if file.is_file() {
                     inputs.add_input(Input::File(file));
-                    count += 1
                 }
-            }
-            if count == 0 {
-                return Err(anyhow!("Not found: '{}'", file_pattern));
             }
         }
 
@@ -210,7 +205,7 @@ mod tests {
         )
         .unwrap();
         let capsule = Capsule::new(&config, backend, Box::new(Dummy));
-        assert!(capsule.read_inputs().is_err());
+        assert!(capsule.read_inputs().is_ok());
     }
 
     #[test]
