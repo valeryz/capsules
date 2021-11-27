@@ -9,7 +9,6 @@ use capsule::observability::honeycomb;
 use capsule::observability::logger::Logger;
 use capsule::wrapper;
 use std::env;
-use std::os::unix::prelude::ExitStatusExt;
 use std::process;
 use std::path::Path;
 
@@ -50,9 +49,9 @@ async fn main() -> Result<()> {
     let result = capsule.run_capsule(&mut program_run).await;
 
     match result {
-        Ok(exit_status) => {
+        Ok(exit_code) => {
             // Pass the exit code of the wrapped program as our exit code.
-            process::exit(exit_status.into_raw());
+            process::exit(exit_code);
         }
         Err(err) => {
             eprintln!("Capsule error: {:#}", err);

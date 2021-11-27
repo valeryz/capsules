@@ -8,7 +8,7 @@ use std::path::Path;
 use std::{env, ffi::OsString};
 use toml;
 
-#[derive(Debug, Derivative)]
+#[derive(Debug, Derivative, PartialEq)]
 #[derivative(Default)]
 pub enum Milestone {
     #[derivative(Default)]
@@ -22,7 +22,7 @@ pub enum Milestone {
 #[derivative(Default)]
 pub enum Backend {
     #[derivative(Default)]
-    Dummy,  // No backend means dummy.
+    Dummy, // No backend means dummy.
     S3,
 }
 
@@ -34,6 +34,9 @@ pub struct Config {
 
     #[serde(default)]
     pub verbose: bool,
+
+    #[serde(default)]
+    pub cache_failure: bool,
 
     #[serde(skip)]
     pub backend: Backend,
@@ -186,6 +189,12 @@ impl Config {
                     .takes_value(false),
             )
             .arg(
+                Arg::new("cache_failure")
+                    .about("Verbose output")
+                    .short('f')
+                    .long("cache_failure"),
+            )
+            .arg(
                 Arg::new("backend")
                     .short('b')
                     .long("backend")
@@ -243,6 +252,12 @@ impl Config {
             )
             .arg(Arg::new("command_to_run").last(true));
 
+        // Look at the first element of command line, to find and remember
+        // argv[0].
+        let mut cmdline_args_iter = cmdline_args.into_iter();
+        let argv0 = cmdline_args_iter.next().context("No argv0")?;
+        // If we explicitly name our program placebo, it will act as
+        // such, otherwise we move to Blue Pill milestone.
         let match_sources = [
             // First we look at the environment variable CAPSULE_ARGS,
             // which has the default args, not listed on command line.
@@ -251,8 +266,17 @@ impl Config {
                 env::var("CAPSULE_ARGS").unwrap_or_default().split_whitespace(),
             )),
             // Then we look at the actual command line args.
-            arg_matches.clone().get_matches_from(cmdline_args),
+            arg_matches
+                .clone()
+                .get_matches_from(itertools::chain([argv0.clone()], cmdline_args_iter)),
         ];
+
+        let argv0 : OsString = argv0.into();
+        if argv0 == "placebo" {
+            config.milestone = Milestone::Placebo;
+        } else {
+            config.milestone = Milestone::BluePill;
+        }
 
         for matches in &match_sources {
             if let Some(capsule_id) = matches.value_of("capsule_id") {
@@ -298,6 +322,9 @@ impl Config {
             }
             if matches.is_present("verbose") {
                 config.verbose = true;
+            }
+            if matches.is_present("cache_failure") {
+                config.cache_failure = true;
             }
             if let Some(command) = matches.values_of("command_to_run") {
                 config.command_to_run = command.map(|x| x.to_owned()).collect();
@@ -355,19 +382,17 @@ mod tests {
     use indoc::indoc;
     use serial_test::serial;
     use std::io::Write;
-    use std::iter;
     use tempfile::NamedTempFile;
-
-    const EMPTY_ARGS: iter::Empty<OsString> = std::iter::empty::<OsString>();
 
     #[test]
     #[serial] // Must serialize these tests so that env vars don't affect other tests.
     fn test_command_line_1() {
         env::set_var("CAPSULE_ARGS", "-c my_capsule -- /bin/echo");
-        let config = Config::new(EMPTY_ARGS, None, None).unwrap();
+        let config = Config::new(["capsule"], None, None);
+        env::remove_var("CAPSULE_ARGS");
+        let config = config.unwrap();
         assert_eq!(config.capsule_id.unwrap(), "my_capsule");
         assert_eq!(config.command_to_run[0], "/bin/echo");
-        env::remove_var("CAPSULE_ARGS");
     }
 
     #[test]

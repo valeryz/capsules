@@ -3,10 +3,11 @@ use anyhow::{Context, Result};
 
 use glob::glob;
 use indoc::indoc;
+use std::os::unix::prelude::ExitStatusExt;
 use std::process::{Child, Command, ExitStatus};
 
 use crate::caching::backend::CachingBackend;
-use crate::config::Config;
+use crate::config::{Config, Milestone};
 use crate::iohashing::*;
 use crate::observability::logger::Logger;
 
@@ -89,19 +90,12 @@ impl<'a> Capsule<'a> {
         left.hash == right.hash
     }
 
-    pub async fn run_capsule(&self, program_run: &mut bool) -> Result<ExitStatus> {
-        let inputs = self.read_inputs()?;
-        let lookup_result = self.caching_backend.lookup(&inputs).await?;
-        let cache_hit = lookup_result.is_some();
-        if cache_hit {
-            println!(
-                "Cache hit on {}: ignoring and proceeding with execution",
-                self.capsule_id()
-            );
-        }
-
-        // TODO: skip execution in blue pill on cache hit.
-
+    async fn execute_and_cache(
+        &self,
+        inputs: &HashBundle,
+        lookup_result: &Option<InputOutputBundle>,
+        program_run: &mut bool,
+    ) -> Result<ExitStatus> {
         eprintln!("Executing command: {:?}", self.config.command_to_run);
         let mut child = self.execute_command()?;
         // Having executed the command, just need to tell our caller
@@ -114,10 +108,9 @@ impl<'a> Capsule<'a> {
         // If we fail along the way, we should complain, but still continue.
         match self.read_outputs(exit_status.code()) {
             Ok(outputs) => {
-                let non_determinism = cache_hit
-                    && lookup_result.as_ref().map_or(false, |lookup_result| {
-                        !Self::equal_outputs(&lookup_result.outputs, &outputs)
-                    });
+                let non_determinism = lookup_result.as_ref().map_or(false, |lookup_result| {
+                    !Self::equal_outputs(&lookup_result.outputs, &outputs)
+                });
 
                 if non_determinism {
                     eprintln!(
@@ -126,7 +119,7 @@ impl<'a> Capsule<'a> {
                         Old: {:?}
                         vs
                         New: {:?}\n"},
-                        &(lookup_result.unwrap().outputs),
+                        lookup_result.as_ref().unwrap().outputs,
                         &outputs
                     );
                 }
@@ -142,15 +135,57 @@ impl<'a> Capsule<'a> {
                     .unwrap_or_else(|err| {
                         eprintln!("Failed to log results for observability: {}", err);
                     });
-                self.caching_backend.write(inputs, outputs).await.unwrap_or_else(|err| {
-                    eprintln!("Failed to write entry to cache: {}", err);
-                });
+                self.caching_backend
+                    .write(inputs, &outputs)
+                    .await
+                    .unwrap_or_else(|err| {
+                        eprintln!("Failed to write entry to cache: {}", err);
+                    });
             }
             Err(err) => {
                 eprintln!("Failed to get command outputs: {}", err);
             }
         }
         Ok(exit_status)
+    }
+
+    pub async fn run_capsule(&self, program_run: &mut bool) -> Result<i32> {
+        let inputs = self.read_inputs()?;
+        let lookup_result = self.caching_backend.lookup(&inputs).await?;
+        let mut exec = false;
+        if lookup_result.is_some() {
+            if self.config.milestone == Milestone::Placebo {
+                println!(
+                    "Cache hit on {}: ignoring and proceeding with execution",
+                    self.capsule_id()
+                );
+                exec = true;
+            } else {
+                // We have a cache hit, don't execute it, unless it was a
+                // cached failed, and we are not caching those.
+                let cached_failure = lookup_result
+                    .as_ref()
+                    .unwrap()
+                    .outputs
+                    .result_code()
+                    .map_or(true, |code| code != 0);
+                if !(self.config.cache_failure && cached_failure) {
+                    println!(
+                        "Cache hit on {}: cached failure, proceeding with execution",
+                        self.capsule_id()
+                    );
+                    exec = true;
+                }
+            }
+        }
+        if exec {
+            self.execute_and_cache(&inputs, &lookup_result, program_run)
+                .await
+                .map(|exit_status| exit_status.into_raw())
+        } else {
+            // TODO: Fetch objects from the cache and place them into outputs.
+            Ok(0)
+        }
     }
 
     pub fn execute_command(&self) -> Result<Child> {
@@ -185,7 +220,7 @@ mod tests {
     #[serial]
     fn test_empty_capsule() {
         let backend = Box::new(dummy::DummyBackend::default());
-        let config = Config::new(["capsule", "-c", "wtf", "--", "/bin/echo"], None, None).unwrap();
+        let config = Config::new(["capsule", "-c", "wtf", "--", "/bin/echo"].iter(), None, None).unwrap();
         let capsule = Capsule::new(&config, backend, Box::new(Dummy));
         assert_eq!(capsule.read_inputs().unwrap().hash, EMPTY_SHA256);
     }
@@ -195,7 +230,7 @@ mod tests {
     fn test_nonexistent_glob() {
         let backend = Box::new(dummy::DummyBackend::default());
         let config = Config::new(
-            ["capsule", "-c", "wtf", "-i", "/nonexistent-glob", "--", "/bin/echo"],
+            ["capsule", "-c", "wtf", "-i", "/nonexistent-glob", "--", "/bin/echo"].iter(),
             None,
             None,
         )
@@ -209,7 +244,7 @@ mod tests {
     fn test_ok_glob() {
         let backend = Box::new(dummy::DummyBackend::default());
         let config = Config::new(
-            ["capsule", "-c", "wtf", "-i", "/bin/echo", "--", "/bin/echo"],
+            ["capsule", "-c", "wtf", "-i", "/bin/echo", "--", "/bin/echo"].iter(),
             None,
             None,
         )
@@ -224,7 +259,12 @@ mod tests {
     #[serial]
     fn test_invalid_glob() {
         let backend = Box::new(dummy::DummyBackend::default());
-        let config = Config::new(["capsule", "-c", "wtf", "-i", "***", "--", "/bin/echo"], None, None).unwrap();
+        let config = Config::new(
+            ["capsule", "-c", "wtf", "-i", "***", "--", "/bin/echo"].iter(),
+            None,
+            None,
+        )
+        .unwrap();
         let capsule = Capsule::new(&config, backend, Box::new(Dummy));
         assert!(capsule.read_inputs().is_err());
     }
@@ -256,7 +296,8 @@ mod tests {
                 &format!("{}/**/111", root.to_str().unwrap()),
                 "--",
                 "/bin/echo",
-            ],
+            ]
+            .iter(),
             None,
             None,
         )
@@ -290,7 +331,8 @@ mod tests {
                 &format!("{}/*/111", root.to_str().unwrap()),
                 "--",
                 "/bin/echo",
-            ],
+            ]
+            .iter(),
             None,
             None,
         )
@@ -319,7 +361,8 @@ mod tests {
                 &format!("{}/**/*", root.to_str().unwrap()),
                 "--",
                 "/bin/echo",
-            ],
+            ]
+            .iter(),
             None,
             None,
         )

@@ -22,7 +22,7 @@ pub struct InputSet {
 }
 
 // TODO: Make sure we can serialize/deserialize hash bundles.
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct HashBundle {
     pub hash: String,
     pub hash_details: Vec<(Input, String)>,
@@ -133,10 +133,23 @@ pub enum Output {
     Stderr(Vec<u8>),
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct OutputHashBundle {
     pub hash: String,
     pub hash_details: Vec<(Output, String)>,
+}
+
+impl OutputHashBundle {
+
+    // Find the result code in all the fields.
+    pub fn result_code(&self) -> Option<i32> {
+        for (output, _) in &self.hash_details {
+            if let Output::ExitCode(code) = output {
+                return Some(*code);
+            }
+        }
+        return None;
+    }
 }
 
 #[derive(Serialize, Deserialize)]

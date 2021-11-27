@@ -77,9 +77,9 @@ impl CachingBackend for S3Backend {
             }
             Err(rusoto_core::RusotoError::Unknown(resp)) if resp.status == 404 => {
                 // No such bucket
-                Ok(None)  // Cache miss
+                Ok(None) // Cache miss
             }
-            Err(e) =>  Err(e.into()),
+            Err(e) => Err(e.into()),
             Ok(response) => {
                 let body = response.body.context("No reponse body")?;
                 let mut body_reader = body.into_async_read();
@@ -94,8 +94,11 @@ impl CachingBackend for S3Backend {
         }
     }
 
-    async fn write(&self, inputs: HashBundle, outputs: OutputHashBundle) -> Result<()> {
-        let io_bundle = InputOutputBundle { inputs, outputs };
+    async fn write(&self, inputs: &HashBundle, outputs: &OutputHashBundle) -> Result<()> {
+        let io_bundle = InputOutputBundle {
+            inputs: inputs.clone(),
+            outputs: outputs.clone(),
+        };
         let key = self.normalize_key(&io_bundle.inputs.hash);
         // Prepare data for S3 writing.
         let data = serde_cbor::to_vec(&io_bundle)?;
