@@ -21,7 +21,6 @@ impl CachingBackend for DummyBackend {
         Ok(None)
     }
 
-    #[allow(unused_variables)]
     async fn write(&self, inputs: &HashBundle, outputs: &OutputHashBundle) -> Result<()> {
         println!(
             "Capsule ID: '{}'. Inputs key: '{}', Outputs key: {}",
@@ -33,6 +32,10 @@ impl CachingBackend for DummyBackend {
             println!("  Capsule Inputs hashes: {:?}", inputs.hash_details);
             println!("  Capsule Outputs hashes: {:?}", outputs.hash_details);
         }
+        Ok(())
+    }
+
+    async fn write_files(&self, _outputs: &OutputHashBundle) -> Result<()> {
         Ok(())
     }
 }

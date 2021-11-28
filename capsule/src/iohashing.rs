@@ -148,7 +148,7 @@ impl OutputHashBundle {
                 return Some(*code);
             }
         }
-        return None;
+        None
     }
 }
 

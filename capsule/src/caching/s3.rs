@@ -1,19 +1,25 @@
 use anyhow::anyhow;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
+use futures::{future::try_join_all, TryStreamExt};
 use hyperx::header::CacheDirective;
 use rusoto_core::region::Region;
 use rusoto_s3::{GetObjectRequest, PutObjectRequest, S3Client, S3 as _};
 use serde_cbor;
+use tokio::fs::File;
 use tokio::io::AsyncReadExt as _;
+use tokio_util::codec;
 
 use crate::caching::backend::CachingBackend;
 use crate::config::Config;
-use crate::iohashing::{HashBundle, InputOutputBundle, OutputHashBundle};
+use crate::iohashing::{HashBundle, InputOutputBundle, Output, OutputHashBundle};
 
 pub struct S3Backend {
-    /// S3 bucket
+    /// S3 bucket for keys
     pub bucket: String,
+
+    /// S3 bucket for objects,
+    pub bucket_objects: String,
 
     /// An S3 client from Rusoto.
     pub client: S3Client,
@@ -29,6 +35,10 @@ impl S3Backend {
                 .s3_bucket
                 .clone()
                 .ok_or_else(|| anyhow!("S3 bucket not specified"))?,
+            bucket_objects: config
+                .s3_bucket_objects
+                .clone()
+                .ok_or_else(|| anyhow!("S3 bucket for objects not specified"))?,
             client: S3Client::new(Region::Custom {
                 name: config
                     .s3_region
@@ -54,6 +64,10 @@ impl S3Backend {
             &key[2..3],
             &key
         )
+    }
+
+    fn normalize_object_key(&self, key: &str) -> String {
+        format!("{}/{}", &key[0..3], &key)
     }
 }
 
@@ -116,6 +130,33 @@ impl CachingBackend for S3Backend {
 
         // Write data to S3 (asynchronously).
         self.client.put_object(request).await?;
+        Ok(())
+    }
+
+    async fn write_files(&self, outputs: &OutputHashBundle) -> Result<()> {
+        let mut all_files_futures = Vec::new();
+        for (item, item_hash) in &outputs.hash_details {
+            if let Output::File(ref fileoutput) = item {
+                if fileoutput.present {
+                    let tokio_file = File::open(&fileoutput.filename).await?;
+                    let byte_stream =
+                        codec::FramedRead::new(tokio_file, codec::BytesCodec::new()).map_ok(|r| r.freeze());
+
+                    let request = PutObjectRequest {
+                        bucket: self.bucket_objects.clone(),
+                        key: self.normalize_object_key(item_hash),
+                        body: Some(rusoto_core::ByteStream::new(byte_stream)),
+                        // Two weeks
+                        cache_control: Some(CacheDirective::MaxAge(2_592_000).to_string()),
+                        content_type: Some("application/octet-stream".to_owned()),
+                        ..Default::default()
+                    };
+                    let put_future = self.client.put_object(request);
+                    all_files_futures.push(put_future);
+                }
+            }
+        }
+        try_join_all(all_files_futures).await?;
         Ok(())
     }
 }

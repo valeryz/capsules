@@ -6,6 +6,8 @@ use indoc::indoc;
 use std::os::unix::prelude::ExitStatusExt;
 use std::process::{Child, Command, ExitStatus};
 
+use futures::join;
+
 use crate::caching::backend::CachingBackend;
 use crate::config::{Config, Milestone};
 use crate::iohashing::*;
@@ -124,23 +126,20 @@ impl<'a> Capsule<'a> {
                     );
                 }
 
-                // TODO: make these truly async simultaneous to onw another. It is atm complicated
-                // because caching_backend.write moves its args.
-
-                // We try logging for observability, but we will not stop it if there was a problem,
-                // only try complaining about it.
-                self.logger
-                    .log(&inputs, &outputs, non_determinism)
-                    .await
-                    .unwrap_or_else(|err| {
-                        eprintln!("Failed to log results for observability: {}", err);
-                    });
-                self.caching_backend
-                    .write(inputs, &outputs)
-                    .await
-                    .unwrap_or_else(|err| {
-                        eprintln!("Failed to write entry to cache: {}", err);
-                    });
+                let logger_fut = self.logger.log(inputs, &outputs, non_determinism);
+                let cache_write_fut = self.caching_backend.write(inputs, &outputs);
+                let cache_writefiles_fut = self.caching_backend.write_files(&outputs);
+                let (logger_result, cache_result, cache_files_result) =
+                    join!(logger_fut, cache_write_fut, cache_writefiles_fut);
+                logger_result.unwrap_or_else(|err| {
+                    eprintln!("Failed to log results for observability: {}", err);
+                });
+                cache_result.unwrap_or_else(|err| {
+                    eprintln!("Failed to write entry to cache: {}", err);
+                });
+                cache_files_result.unwrap_or_else(|err| {
+                    eprintln!("Failed to write output files to cache: {}", err);
+                });
             }
             Err(err) => {
                 eprintln!("Failed to get command outputs: {}", err);
@@ -152,6 +151,7 @@ impl<'a> Capsule<'a> {
     pub async fn run_capsule(&self, program_run: &mut bool) -> Result<i32> {
         let inputs = self.read_inputs()?;
         let lookup_result = self.caching_backend.lookup(&inputs).await?;
+        let result_code = lookup_result.as_ref().unwrap().outputs.result_code();
         let mut exec = false;
         if lookup_result.is_some() {
             if self.config.milestone == Milestone::Placebo {
@@ -163,12 +163,7 @@ impl<'a> Capsule<'a> {
             } else {
                 // We have a cache hit, don't execute it, unless it was a
                 // cached failed, and we are not caching those.
-                let cached_failure = lookup_result
-                    .as_ref()
-                    .unwrap()
-                    .outputs
-                    .result_code()
-                    .map_or(true, |code| code != 0);
+                let cached_failure = result_code.map_or(true, |code| code != 0);
                 if !(self.config.cache_failure && cached_failure) {
                     println!(
                         "Cache hit on {}: cached failure, proceeding with execution",

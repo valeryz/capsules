@@ -82,6 +82,9 @@ pub struct Config {
     pub s3_bucket: Option<String>,
 
     #[serde(default)]
+    pub s3_bucket_objects: Option<String>,
+
+    #[serde(default)]
     pub s3_endpoint: Option<String>,
 
     #[serde(default)]
@@ -239,6 +242,12 @@ impl Config {
                     .takes_value(true),
             )
             .arg(
+                Arg::new("s3_bucket_objects")
+                    .long("s3_bucket_objects")
+                    .about("S3 bucket for objects name")
+                    .takes_value(true),
+            )
+            .arg(
                 Arg::new("s3_endpoint")
                     .long("s3_endpoint")
                     .about("S3 endpoint")
@@ -351,6 +360,9 @@ impl Config {
             }
             if let Some(value) = matches.value_of("s3_bucket") {
                 config.s3_bucket = Some(value.into());
+            }
+            if let Some(value) = matches.value_of("s3_bucket_objects") {
+                config.s3_bucket_objects = Some(value.into());
             }
             if let Some(value) = matches.value_of("s3_region") {
                 config.s3_region = Some(value.into());
