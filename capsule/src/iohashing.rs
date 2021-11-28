@@ -123,6 +123,7 @@ impl InputSet {
 pub struct FileOutput {
     pub filename: PathBuf,
     pub present: bool,
+    pub mode: u32,
 }
 
 #[derive(PartialOrd, Ord, PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]

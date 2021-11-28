@@ -6,13 +6,14 @@ use hyperx::header::CacheDirective;
 use rusoto_core::region::Region;
 use rusoto_s3::{GetObjectRequest, PutObjectRequest, S3Client, S3 as _};
 use serde_cbor;
-use tokio::fs::File;
+use std::fs as std_fs;
+use tokio::fs as tokio_fs;
 use tokio::io::AsyncReadExt as _;
 use tokio_util::codec;
 
 use crate::caching::backend::CachingBackend;
 use crate::config::Config;
-use crate::iohashing::{HashBundle, InputOutputBundle, Output, OutputHashBundle};
+use crate::iohashing::{FileOutput, HashBundle, InputOutputBundle, Output, OutputHashBundle};
 
 pub struct S3Backend {
     /// S3 bucket for keys
@@ -69,6 +70,30 @@ impl S3Backend {
     fn normalize_object_key(&self, key: &str) -> String {
         format!("{}/{}", &key[0..3], &key)
     }
+
+    async fn read_move_object_file(&self, fileoutput: &FileOutput, item_hash: &str) -> Result<()> {
+        /*
+               let key = self.normalize_object_key(item_hash);
+                   let request = GetObjectRequest {
+                       bucket: self.bucket_objects.clone(),
+                       key,
+                       ..Default::default()
+                   };
+                   let response = self.client.get_object(request).await?;
+                   let body = response.body.context("No reponse body")?;
+                           let mut body_reader = body.into_async_read();
+                           let mut body = Vec::new();
+                           body_reader
+                               .read_to_end(&mut body)
+                               .await
+                               .context("failed to read HTTP body")?;
+                           let bundle = serde_cbor::from_slice(&body).context("Cannot deserialize output")?;
+               Ok(Some(bundle))
+
+        */
+        Ok(())
+    }
+
 }
 
 #[async_trait]
@@ -77,6 +102,7 @@ impl CachingBackend for S3Backend {
         "s3"
     }
 
+    /// Lookup inputs in S3.
     async fn lookup(&self, inputs: &HashBundle) -> Result<Option<InputOutputBundle>> {
         let key = self.normalize_key(&inputs.hash);
         let request = GetObjectRequest {
@@ -108,6 +134,25 @@ impl CachingBackend for S3Backend {
         }
     }
 
+    /// Read all output files from S3, and place them into destination paths.
+    async fn read_files(&self, outputs: &OutputHashBundle) -> Result<()> {
+        let mut all_files_futures = Vec::new();
+        for (item, item_hash) in &outputs.hash_details {
+            if let Output::File(ref fileoutput) = item {
+                if fileoutput.present {
+                    let download_file_fut = self.read_move_object_file(fileoutput, item_hash);
+                    all_files_futures.push(download_file_fut);
+                } else {
+                    std_fs::remove_file(&fileoutput.filename)
+                        .unwrap_or_else(|err| eprintln!("Failed to remove file {}", err));
+                }
+            }
+        }
+        try_join_all(all_files_futures).await?;
+        Ok(())
+    }
+
+    /// Write hashes of inputs and outputs into S3, keyed by hashes of inputs.
     async fn write(&self, inputs: &HashBundle, outputs: &OutputHashBundle) -> Result<()> {
         let io_bundle = InputOutputBundle {
             inputs: inputs.clone(),
@@ -133,12 +178,13 @@ impl CachingBackend for S3Backend {
         Ok(())
     }
 
+    /// Write output files into S3, keyed by their hash (content addressed).
     async fn write_files(&self, outputs: &OutputHashBundle) -> Result<()> {
         let mut all_files_futures = Vec::new();
         for (item, item_hash) in &outputs.hash_details {
             if let Output::File(ref fileoutput) = item {
                 if fileoutput.present {
-                    let tokio_file = File::open(&fileoutput.filename).await?;
+                    let tokio_file = tokio_fs::File::open(&fileoutput.filename).await?;
                     let byte_stream =
                         codec::FramedRead::new(tokio_file, codec::BytesCodec::new()).map_ok(|r| r.freeze());
 

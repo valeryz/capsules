@@ -21,6 +21,11 @@ impl CachingBackend for DummyBackend {
         Ok(None)
     }
 
+    /// Read all output files from S3, and place them into destination paths.
+    async fn read_files(&self, _outputs: &OutputHashBundle) -> Result<()> {
+        Ok(())
+    }
+
     async fn write(&self, inputs: &HashBundle, outputs: &OutputHashBundle) -> Result<()> {
         println!(
             "Capsule ID: '{}'. Inputs key: '{}', Outputs key: {}",

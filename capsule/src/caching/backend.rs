@@ -12,9 +12,12 @@ pub trait CachingBackend {
 
     async fn lookup(&self, inputs: &HashBundle) -> Result<Option<InputOutputBundle>>;
 
-    async fn write(&self, _inputs: &HashBundle, _outputs: &OutputHashBundle) -> Result<()>;
+    /// Read all output files from S3, and place them into destination paths.
+    async fn read_files(&self, outputs: &OutputHashBundle) -> Result<()>;
 
-    async fn write_files(&self, _outputs: &OutputHashBundle) -> Result<()>;
+    async fn write(&self, inputs: &HashBundle, outputs: &OutputHashBundle) -> Result<()>;
+
+    async fn write_files(&self, outputs: &OutputHashBundle) -> Result<()>;
 }
 
 impl fmt::Debug for dyn CachingBackend {

@@ -3,9 +3,10 @@ use anyhow::{Context, Result};
 
 use glob::glob;
 use indoc::indoc;
+use std::os::unix::fs::PermissionsExt;
 use std::os::unix::prelude::ExitStatusExt;
 use std::process::{Child, Command, ExitStatus};
-
+    
 use futures::join;
 
 use crate::caching::backend::CachingBackend;
@@ -73,11 +74,13 @@ impl<'a> Capsule<'a> {
                     outputs.add_output(Output::File(FileOutput {
                         filename: file.to_path_buf(),
                         present: true,
+                        mode: file.metadata()?.permissions().mode(),
                     }));
                 } else {
                     outputs.add_output(Output::File(FileOutput {
                         filename: file.to_path_buf(),
                         present: false,
+                        mode: 0o644,  // Default permissions just in case.
                     }));
                 }
             }
