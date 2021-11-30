@@ -6,9 +6,10 @@ use hyperx::header::CacheDirective;
 use rusoto_core::region::Region;
 use rusoto_s3::{GetObjectRequest, PutObjectRequest, S3Client, S3 as _};
 use serde_cbor;
+use tempfile::NamedTempFile;
 use std::fs as std_fs;
 use tokio::fs as tokio_fs;
-use tokio::io::AsyncReadExt as _;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_util::codec;
 
 use crate::caching::backend::CachingBackend;
@@ -71,29 +72,27 @@ impl S3Backend {
         format!("{}/{}", &key[0..3], &key)
     }
 
+    // Read a file object from S3, and place it at its output path by first reading asynchronously
+    // from the S3 stream into a temp file, and then persisting (moving) into the destination name.
     async fn read_move_object_file(&self, fileoutput: &FileOutput, item_hash: &str) -> Result<()> {
-        /*
-               let key = self.normalize_object_key(item_hash);
-                   let request = GetObjectRequest {
-                       bucket: self.bucket_objects.clone(),
-                       key,
-                       ..Default::default()
-                   };
-                   let response = self.client.get_object(request).await?;
-                   let body = response.body.context("No reponse body")?;
-                           let mut body_reader = body.into_async_read();
-                           let mut body = Vec::new();
-                           body_reader
-                               .read_to_end(&mut body)
-                               .await
-                               .context("failed to read HTTP body")?;
-                           let bundle = serde_cbor::from_slice(&body).context("Cannot deserialize output")?;
-               Ok(Some(bundle))
-
-        */
+        let key = self.normalize_object_key(item_hash);
+        let request = GetObjectRequest {
+            bucket: self.bucket_objects.clone(),
+            key,
+            ..Default::default()
+        };
+        let response = self.client.get_object(request).await?;
+        let body = response.body.context("No reponse body")?;
+        let dir = fileoutput.filename.parent().context("No parent directory")?;
+        let file = NamedTempFile::new_in(dir)?;
+        let (file, path) = file.into_parts();
+        let mut file_stream = tokio::fs::File::from_std(file);
+        let mut body_reader = body.into_async_read();
+        tokio::io::copy(&mut body_reader, &mut file_stream).await?;
+        file_stream.flush().await?;
+        path.persist(&fileoutput.filename)?;
         Ok(())
     }
-
 }
 
 #[async_trait]
