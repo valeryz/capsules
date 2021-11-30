@@ -120,10 +120,17 @@ fn output_hash_details_to_json(bundle: &OutputHashBundle) -> serde_json::Value {
 
 #[async_trait]
 impl Logger for Honeycomb {
-    async fn log(&self, inputs_bundle: &HashBundle, output_bundle: &OutputHashBundle, non_determinism: bool) -> Result<()> {
+    async fn log(
+        &self,
+        inputs_bundle: &HashBundle,
+        output_bundle: &OutputHashBundle,
+        result_from_cache: bool,
+        non_determinism: bool,
+    ) -> Result<()> {
         let mut map = serde_json::Map::new();
         map.insert("trace.trace_id".into(), self.trace_id.clone().into());
         map.insert("trace.span_id".into(), self.capsule_id.clone().into());
+        map.insert("result_from_cache".into(), result_from_cache.into());
         map.insert("non_determinism".into(), non_determinism.into());
         map.insert("inputs_hash".into(), inputs_bundle.hash.clone().into());
         map.insert("inputs_hash_details".into(), hash_details_to_json(inputs_bundle));

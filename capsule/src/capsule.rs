@@ -6,7 +6,7 @@ use indoc::indoc;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::prelude::ExitStatusExt;
 use std::process::{Child, Command, ExitStatus};
-    
+
 use futures::join;
 
 use crate::caching::backend::CachingBackend;
@@ -80,7 +80,7 @@ impl<'a> Capsule<'a> {
                     outputs.add_output(Output::File(FileOutput {
                         filename: file.to_path_buf(),
                         present: false,
-                        mode: 0o644,  // Default permissions just in case.
+                        mode: 0o644, // Default permissions just in case.
                     }));
                 }
             }
@@ -129,7 +129,7 @@ impl<'a> Capsule<'a> {
                     );
                 }
 
-                let logger_fut = self.logger.log(inputs, &outputs, non_determinism);
+                let logger_fut = self.logger.log(inputs, &outputs, false, non_determinism);
                 let cache_write_fut = self.caching_backend.write(inputs, &outputs);
                 let cache_writefiles_fut = self.caching_backend.write_files(&outputs);
                 let (logger_result, cache_result, cache_files_result) =
@@ -154,15 +154,16 @@ impl<'a> Capsule<'a> {
     pub async fn run_capsule(&self, program_run: &mut bool) -> Result<i32> {
         let inputs = self.read_inputs()?;
         let lookup_result = self.caching_backend.lookup(&inputs).await?;
-        let result_code = lookup_result.as_ref().unwrap().outputs.result_code();
-        let mut exec = false;
+        let outputs = &lookup_result.as_ref().unwrap().outputs;
+        let result_code = outputs.result_code();
+        let mut use_cache = true;
         if lookup_result.is_some() {
             if self.config.milestone == Milestone::Placebo {
                 println!(
                     "Cache hit on {}: ignoring and proceeding with execution",
                     self.capsule_id()
                 );
-                exec = true;
+                use_cache = false;
             } else {
                 // We have a cache hit, don't execute it, unless it was a
                 // cached failed, and we are not caching those.
@@ -172,8 +173,15 @@ impl<'a> Capsule<'a> {
                         "Cache hit on {}: cached failure, proceeding with execution",
                         self.capsule_id()
                     );
-                    exec = true;
+                    use_cache = false;
                 }
+            }
+        }
+        let mut exec = !use_cache; // If we successfully use the cache, don't execute.
+        if use_cache {
+            if let Err(e) = self.caching_backend.read_files(&outputs).await {
+                eprintln!("Failed to retrieve outputs from the cache: {}", e);
+                exec = true; // But if we failed to use the cache, do execute.
             }
         }
         if exec {
@@ -181,7 +189,13 @@ impl<'a> Capsule<'a> {
                 .await
                 .map(|exit_status| exit_status.into_raw())
         } else {
-            // TODO: Fetch objects from the cache and place them into outputs.
+            // Log successful cached results.
+            self.logger
+                .log(&inputs, outputs, true, false)
+                .await
+                .unwrap_or_else(|err| {
+                    eprintln!("Failed to log results for observability: {}", err);
+                });
             Ok(0)
         }
     }

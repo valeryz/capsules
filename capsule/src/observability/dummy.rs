@@ -11,6 +11,7 @@ impl Logger for Dummy {
         &self,
         _inputs_bundle: &HashBundle,
         _output_bundle: &OutputHashBundle,
+        _result_from_cache: bool,
         _non_determinism: bool,
     ) -> Result<()> {
         Ok(())
