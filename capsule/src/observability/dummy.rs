@@ -1,7 +1,7 @@
 use super::logger::Logger;
+use crate::iohashing::{InputHashBundle, OutputHashBundle};
 use anyhow::Result;
 use async_trait::async_trait;
-use crate::iohashing::{InputHashBundle, OutputHashBundle};
 
 pub struct Dummy;
 

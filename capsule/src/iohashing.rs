@@ -105,7 +105,7 @@ fn bytes_hash(s: &[u8]) -> String {
 }
 
 /// Helper function for both input and output hash finalization.
-fn bundle_hash<'a, I : Iterator<Item = (&'a str, &'a str)>>(hash_details: I) -> String {
+fn bundle_hash<'a, I: Iterator<Item = (&'a str, &'a str)>>(hash_details: I) -> String {
     let mut acc: Sha256 = Sha256::new();
     for (tag, hash) in hash_details {
         acc.update(tag);
@@ -185,11 +185,11 @@ impl OutputSet {
             let hash = match output {
                 Output::File(ref file_output) => {
                     if file_output.present {
-                       file_hash(&file_output.filename)?
+                        file_hash(&file_output.filename)?
                     } else {
                         "".to_string()
                     }
-                },
+                }
                 Output::ExitCode(code) => string_hash(&code.to_string()),
                 Output::Stdout(ref buffer) => bytes_hash(buffer),
                 Output::Stderr(ref buffer) => bytes_hash(buffer),

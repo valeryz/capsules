@@ -280,7 +280,7 @@ impl Config {
                 .get_matches_from(itertools::chain([argv0.clone()], cmdline_args_iter)),
         ];
 
-        let argv0 : OsString = argv0.into();
+        let argv0: OsString = argv0.into();
         if argv0 == "placebo" {
             config.milestone = Milestone::Placebo;
         } else {

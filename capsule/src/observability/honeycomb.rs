@@ -1,6 +1,6 @@
 use crate::{
     config::Config,
-    iohashing::{InputHashBundle, Input, Output, OutputHashBundle},
+    iohashing::{Input, InputHashBundle, Output, OutputHashBundle},
 };
 use anyhow::anyhow;
 use anyhow::Result;

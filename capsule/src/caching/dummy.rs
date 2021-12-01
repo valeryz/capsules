@@ -2,7 +2,7 @@ use crate::caching::backend::CachingBackend;
 use anyhow::Result;
 use async_trait::async_trait;
 
-use crate::iohashing::{InputHashBundle, OutputHashBundle, InputOutputBundle};
+use crate::iohashing::{InputHashBundle, InputOutputBundle, OutputHashBundle};
 
 #[derive(Default)]
 pub struct DummyBackend {
@@ -29,9 +29,7 @@ impl CachingBackend for DummyBackend {
     async fn write(&self, inputs: &InputHashBundle, outputs: &OutputHashBundle) -> Result<()> {
         println!(
             "Capsule ID: '{}'. Inputs key: '{}', Outputs key: {}",
-            self.capsule_id,
-            inputs.hash,
-            outputs.hash,
+            self.capsule_id, inputs.hash, outputs.hash,
         );
         if self.verbose_output {
             println!("  Capsule Inputs hashes: {:?}", inputs.hash_details);

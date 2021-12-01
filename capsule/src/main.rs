@@ -9,8 +9,8 @@ use capsule::observability::honeycomb;
 use capsule::observability::logger::Logger;
 use capsule::wrapper;
 use std::env;
-use std::process;
 use std::path::Path;
+use std::process;
 
 fn create_capsule(config: &Config) -> Result<Capsule<'_>> {
     // First, instantiate our caching backend (S3, Dummy, or possibly other in the future).
@@ -33,9 +33,7 @@ fn create_capsule(config: &Config) -> Result<Capsule<'_>> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let default_toml = std::env::var("HOME")
-        .ok()
-        .map(|home| home + "/.capsules.toml");
+    let default_toml = std::env::var("HOME").ok().map(|home| home + "/.capsules.toml");
     let config = Config::new(
         env::args(),
         default_toml.as_ref().map(Path::new),

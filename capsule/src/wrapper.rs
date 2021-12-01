@@ -13,10 +13,7 @@ where
     let program_cstring = CString::new(program_name)?;
     let args: Vec<String> = args.collect();
     println!("Fallback exec'ing {:?}", args);
-    let arg_cstrings = args
-        .into_iter()
-        .map(CString::new)
-        .collect::<Result<Vec<_>, _>>()?;
+    let arg_cstrings = args.into_iter().map(CString::new).collect::<Result<Vec<_>, _>>()?;
 
     match execvp(&program_cstring, &arg_cstrings) {
         Ok(_) => unreachable!(),
@@ -39,10 +36,7 @@ pub fn exec() -> Result<()> {
     }
 
     if let Some(program_name) = args.next() {
-        exec_program(
-            program_name.clone(),
-            itertools::chain!([program_name], args),
-        )
+        exec_program(program_name.clone(), itertools::chain!([program_name], args))
     } else {
         Err(anyhow!(USAGE.to_string()))
     }

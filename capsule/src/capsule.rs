@@ -191,7 +191,11 @@ impl<'a> Capsule<'a> {
                         return Ok(lookup_result.outputs.result_code().unwrap_or(127));
                     }
                     Err(e) => {
-                        println!("Cache hit on {}: failed to retrieve from the cache: {}", self.capsule_id(), e);
+                        println!(
+                            "Cache hit on {}: failed to retrieve from the cache: {}",
+                            self.capsule_id(),
+                            e
+                        );
                     }
                 }
             }
