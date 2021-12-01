@@ -5,6 +5,7 @@ use glob::glob;
 use indoc::indoc;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::prelude::ExitStatusExt;
+use std::path::Path;
 use std::process::{Child, Command, ExitStatus};
 
 use futures::join;
@@ -172,6 +173,26 @@ impl<'a> Capsule<'a> {
                             "Cache hit on {}: cached failure, proceeding with execution.",
                             self.capsule_id()
                         );
+                        use_cache = false;
+                    }
+                }
+                // Check whether we should avoid caching when output files from the cache hit
+                // don't match with the capsule output files from config.
+                if use_cache {
+                    // a predicate selecting all paths for Output::Files from all cached outputs.
+                    fn predicate<X>((output, _) : &(Output, X)) -> Option<&Path> {
+                        if let Output::File(fileoutput) = output {
+                            if fileoutput.present {
+                                return Some(fileoutput.filename.as_path())
+                            }
+                        }
+                        None
+                    }
+                    let iter = lookup_result.outputs.hash_details.iter().filter_map(predicate);
+                    // If anything doesn't match, don't use the cache!
+                    if !self.config.outputs_match(iter)? {
+                        eprintln!("Cache hit on {}: mismatch in output patterns, proceeding wiht execution",
+                                  self.capsule_id());
                         use_cache = false;
                     }
                 }

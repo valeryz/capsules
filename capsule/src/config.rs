@@ -5,6 +5,7 @@ use itertools;
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use std::{env, ffi::OsString};
 use toml;
 
@@ -385,6 +386,31 @@ impl Config {
             .map(|value| value.split_once('=').map(|(a, b)| (a.to_owned(), b.to_owned())))
             .collect::<Option<_>>()
             .ok_or_else(|| anyhow!("Can't parse honeycomb_kv"))
+    }
+
+    // Check if all paths match at least one of the specified outputs.
+    pub fn outputs_match<'a, I: Iterator<Item = &'a Path>>(&self, paths: I) -> Result<bool> {
+        // Take all patterns from globs in self.output_files
+        let patterns = self
+            .output_files
+            .iter()
+            .map(|path| glob::Pattern::from_str(&path))
+            .collect::<Result<Vec<glob::Pattern>, _>>()
+            .with_context(|| "Invalid output file pattern")?;
+        // For each given path, try to find at least one match in the patterns.
+        for path in paths {
+            let mut has_match = false;
+            for pattern in &patterns {
+                if pattern.matches_path(path) {
+                    has_match = true;
+                    break;
+                }
+            }
+            if !has_match {
+                return Ok(false);
+            }
+        }
+        Ok(true)
     }
 }
 
