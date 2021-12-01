@@ -4,7 +4,7 @@ use derivative::Derivative;
 use itertools;
 use serde::Deserialize;
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::{env, ffi::OsString};
 use toml;
 
@@ -281,7 +281,7 @@ impl Config {
         ];
 
         let argv0: OsString = argv0.into();
-        if argv0 == "placebo" {
+        if PathBuf::from(argv0).ends_with("placebo") {
             config.milestone = Milestone::Placebo;
         } else {
             config.milestone = Milestone::BluePill;
