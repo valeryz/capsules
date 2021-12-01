@@ -60,17 +60,15 @@ impl S3Backend {
 
     fn normalize_key(&self, key: &str) -> String {
         format!(
-            "{}/{}/{}/{}/{}",
+            "{}/{}/{}",
             &self.capsule_id,
-            &key[0..1],
-            &key[1..2],
-            &key[2..3],
-            &key
+            &key[0..2],
+            key
         )
     }
 
     fn normalize_object_key(&self, key: &str) -> String {
-        format!("{}/{}", &key[0..3], &key)
+        format!("{}/{}", &key[0..2], key)
     }
 
     // Read a file object from S3, and place it at its output path by first reading asynchronously
