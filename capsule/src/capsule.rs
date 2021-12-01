@@ -5,7 +5,7 @@ use glob::glob;
 use indoc::indoc;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::prelude::ExitStatusExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus};
 
 use futures::join;
@@ -66,6 +66,7 @@ impl<'a> Capsule<'a> {
             outputs.add_output(Output::ExitCode(exit_code));
         }
         for file_pattern in &self.config.output_files {
+            let mut present = false;
             for file in glob(file_pattern)? {
                 let file = file?;
                 if file.is_dir() {
@@ -77,13 +78,16 @@ impl<'a> Capsule<'a> {
                         present: true,
                         mode: file.metadata()?.permissions().mode(),
                     }));
-                } else {
-                    outputs.add_output(Output::File(FileOutput {
-                        filename: file.to_path_buf(),
-                        present: false,
-                        mode: 0o644, // Default permissions just in case.
-                    }));
+                    present = true;
                 }
+            }
+            if !present {
+                // This seems to be a file that hasn't matched.
+                outputs.add_output(Output::File(FileOutput {
+                    filename: PathBuf::from(file_pattern),
+                    present: false,
+                    mode: 0o644, // Default permissions just in case.
+                }));
             }
         }
         let capsule_id = self.capsule_id();
@@ -180,7 +184,7 @@ impl<'a> Capsule<'a> {
                 // don't match with the capsule output files from config.
                 if use_cache {
                     // a predicate selecting all paths for Output::Files from all cached outputs.
-                    fn predicate<X>((output, _) : &(Output, X)) -> Option<&Path> {
+                    fn predicate<X>((output, _): &(Output, X)) -> Option<&Path> {
                         if let Output::File(fileoutput) = output {
                             if fileoutput.present {
                                 return Some(fileoutput.filename.as_path());
@@ -191,8 +195,10 @@ impl<'a> Capsule<'a> {
                     let iter = lookup_result.outputs.hash_details.iter().filter_map(predicate);
                     // If anything doesn't match, don't use the cache!
                     if !self.config.outputs_match(iter)? {
-                        eprintln!("Cache hit on {}: mismatch in output patterns, proceeding with execution",
-                                  self.capsule_id());
+                        eprintln!(
+                            "Cache hit on {}: mismatch in output patterns, proceeding with execution",
+                            self.capsule_id()
+                        );
                         use_cache = false;
                     }
                 }
