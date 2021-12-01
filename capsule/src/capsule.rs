@@ -191,7 +191,7 @@ impl<'a> Capsule<'a> {
                     let iter = lookup_result.outputs.hash_details.iter().filter_map(predicate);
                     // If anything doesn't match, don't use the cache!
                     if !self.config.outputs_match(iter)? {
-                        eprintln!("Cache hit on {}: mismatch in output patterns, proceeding wiht execution",
+                        eprintln!("Cache hit on {}: mismatch in output patterns, proceeding with execution",
                                   self.capsule_id());
                         use_cache = false;
                     }
