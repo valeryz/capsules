@@ -154,50 +154,53 @@ impl<'a> Capsule<'a> {
     pub async fn run_capsule(&self, program_run: &mut bool) -> Result<i32> {
         let inputs = self.read_inputs()?;
         let lookup_result = self.caching_backend.lookup(&inputs).await?;
-        let outputs = &lookup_result.as_ref().unwrap().outputs;
-        let result_code = outputs.result_code();
-        let mut use_cache = true;
-        if lookup_result.is_some() {
+        if let Some(ref lookup_result) = lookup_result {
+            // We have a cache hit, but in case we are in placebo mode, or we have cached a failure,
+            // we should still not use the cache. Let's figure this out while printing the solution.
+            let mut use_cache = true;
             if self.config.milestone == Milestone::Placebo {
                 println!(
-                    "Cache hit on {}: ignoring and proceeding with execution",
+                    "Cache hit on {}: ignoring and proceeding with execution.",
                     self.capsule_id()
                 );
-                use_cache = false;
+                use_cache = false
             } else {
-                // We have a cache hit, don't execute it, unless it was a
-                // cached failed, and we are not caching those.
-                let cached_failure = result_code.map_or(true, |code| code != 0);
-                if !(self.config.cache_failure && cached_failure) {
-                    println!(
-                        "Cache hit on {}: cached failure, proceeding with execution",
-                        self.capsule_id()
-                    );
-                    use_cache = false;
+                if !self.config.cache_failure {
+                    // If result code from the command is not 0
+                    if lookup_result.outputs.result_code().unwrap_or(1) != 0 {
+                        println!(
+                            "Cache hit on {}: cached failure, proceeding with execution.",
+                            self.capsule_id()
+                        );
+                        use_cache = false;
+                    }
+                }
+            }
+
+            if use_cache {
+                match self.caching_backend.read_files(&lookup_result.outputs).await {
+                    Ok(_) => {
+                        println!("Cache hit on {}: success.", self.capsule_id());
+                        // Log successful cached results.
+                        self.logger
+                            .log(&inputs, &lookup_result.outputs, true, false)
+                            .await
+                            .unwrap_or_else(|err| {
+                                eprintln!("Failed to log results for observability: {}", err);
+                            });
+                        return Ok(lookup_result.outputs.result_code().unwrap_or(127));
+                    }
+                    Err(e) => {
+                        println!("Cache hit on {}: failed to retrieve from the cache: {}", self.capsule_id(), e);
+                    }
                 }
             }
         }
-        let mut exec = !use_cache; // If we successfully use the cache, don't execute.
-        if use_cache {
-            if let Err(e) = self.caching_backend.read_files(&outputs).await {
-                eprintln!("Failed to retrieve outputs from the cache: {}", e);
-                exec = true; // But if we failed to use the cache, do execute.
-            }
-        }
-        if exec {
-            self.execute_and_cache(&inputs, &lookup_result, program_run)
-                .await
-                .map(|exit_status| exit_status.into_raw())
-        } else {
-            // Log successful cached results.
-            self.logger
-                .log(&inputs, outputs, true, false)
-                .await
-                .unwrap_or_else(|err| {
-                    eprintln!("Failed to log results for observability: {}", err);
-                });
-            Ok(0)
-        }
+
+        // If we got here, we should execute.
+        self.execute_and_cache(&inputs, &lookup_result, program_run)
+            .await
+            .map(|exit_status| exit_status.into_raw())
     }
 
     pub fn execute_command(&self) -> Result<Child> {

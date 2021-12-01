@@ -8,6 +8,7 @@ use rusoto_s3::{GetObjectRequest, PutObjectRequest, S3Client, S3 as _};
 use serde_cbor;
 use tempfile::NamedTempFile;
 use std::fs as std_fs;
+use std::os::unix::fs::PermissionsExt;
 use tokio::fs as tokio_fs;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_util::codec;
@@ -91,6 +92,7 @@ impl S3Backend {
         tokio::io::copy(&mut body_reader, &mut file_stream).await?;
         file_stream.flush().await?;
         path.persist(&fileoutput.filename)?;
+        std_fs::set_permissions(&fileoutput.filename, std_fs::Permissions::from_mode(fileoutput.mode))?;
         Ok(())
     }
 }
@@ -184,6 +186,7 @@ impl CachingBackend for S3Backend {
             if let Output::File(ref fileoutput) = item {
                 if fileoutput.present {
                     let tokio_file = tokio_fs::File::open(&fileoutput.filename).await?;
+                    let content_length = tokio_file.metadata().await?.len();
                     let byte_stream =
                         codec::FramedRead::new(tokio_file, codec::BytesCodec::new()).map_ok(|r| r.freeze());
 
@@ -191,6 +194,7 @@ impl CachingBackend for S3Backend {
                         bucket: self.bucket_objects.clone(),
                         key: self.normalize_object_key(item_hash),
                         body: Some(rusoto_core::ByteStream::new(byte_stream)),
+                        content_length: Some(content_length as i64),
                         // Two weeks
                         cache_control: Some(CacheDirective::MaxAge(2_592_000).to_string()),
                         content_type: Some("application/octet-stream".to_owned()),

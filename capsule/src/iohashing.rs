@@ -1,11 +1,11 @@
 use anyhow;
 use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::cmp::Ordering;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use serde::{Serialize, Deserialize};
 
 #[derive(PartialOrd, Ord, PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
 pub enum Input {
@@ -28,9 +28,54 @@ pub struct HashBundle {
     pub hash_details: Vec<(Input, String)>,
 }
 
+#[derive(PartialOrd, Ord, PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
+pub struct FileOutput {
+    pub filename: PathBuf,
+    pub present: bool,
+    pub mode: u32,
+}
+
+#[derive(PartialOrd, Ord, PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
+pub enum Output {
+    File(FileOutput),
+    ExitCode(i32),
+    Stdout(Vec<u8>),
+    Stderr(Vec<u8>),
+}
+
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
+pub struct OutputHashBundle {
+    pub hash: String,
+    pub hash_details: Vec<(Output, String)>,
+}
+
+impl OutputHashBundle {
+    // Find the result code in all the fields.
+    pub fn result_code(&self) -> Option<i32> {
+        for (output, _) in &self.hash_details {
+            if let Output::ExitCode(code) = output {
+                return Some(*code);
+            }
+        }
+        None
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct InputOutputBundle {
+    pub inputs: HashBundle,
+    pub outputs: OutputHashBundle,
+}
+
+/// Output set is the set of all process outputs.
+#[derive(Default)]
+pub struct OutputSet {
+    pub outputs: Vec<Output>,
+}
+
 /// Returns the hash of the given file.
 ///
-/// TODO(valeryz): Cache these in a parent process' memory by the
+/// TODO(valeryz): Maybe cache these in a parent process' memory by the
 /// output of stat(2), except atime, so that we don't have to read
 /// them twice during a single build process.
 fn file_hash(filename: &Path) -> Result<String> {
@@ -61,10 +106,11 @@ fn bytes_hash(s: &[u8]) -> String {
 }
 
 /// Helper function for both input and output hash finalization.
-fn bundle_hash<T>(hash_details: &[(T, String)]) -> String {
+fn bundle_hash<'a, I : Iterator<Item = (&'a str, &'a str)>>(hash_details: I) -> String {
     let mut acc: Sha256 = Sha256::new();
-    for hash in hash_details.iter() {
-        acc.update(&hash.1);
+    for (tag, hash) in hash_details {
+        acc.update(tag);
+        acc.update(hash);
     }
     format!("{:x}", acc.finalize())
 }
@@ -85,16 +131,11 @@ impl InputSet {
         // Calculate the hash of the input set independently of the order.
         let mut hash_bundle = HashBundle::default();
         for input in self.inputs {
-            match input {
-                Input::File(ref s) => {
-                    let tag = format!("File{}", file_hash(s)?);
-                    hash_bundle.hash_details.push((input, tag));
-                }
-                Input::ToolTag(ref s) => {
-                    let tag = format!("ToolTag{}", string_hash(s));
-                    hash_bundle.hash_details.push((input, tag));
-                }
-            }
+            let hash = match input {
+                Input::File(ref s) => file_hash(s)?,
+                Input::ToolTag(ref s) => string_hash(s),
+            };
+            hash_bundle.hash_details.push((input, hash));
         }
         // Sort inputs hashes by the hash value, but so that tool_tags come first.
         // This is needed so that when we cap our JSON, we could still see tool_tags.
@@ -109,60 +150,21 @@ impl InputSet {
                 a.1.cmp(&b.1)
             }
         });
-        hash_bundle.hash = bundle_hash(&hash_bundle.hash_details);
+        hash_bundle.hash = bundle_hash(hash_bundle.hash_details.iter().map(|(inp, hash)| {
+            (
+                match inp {
+                    Input::File(_) => "File",
+                    Input::ToolTag(_) => "ToolTag",
+                },
+                &hash[..],
+            )
+        }));
         Ok(hash_bundle)
     }
 
     pub fn add_input(&mut self, input: Input) {
         self.inputs.push(input)
     }
-}
-
-// TODO: should we also add exec bit? or whole UNIX permissions?
-#[derive(PartialOrd, Ord, PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
-pub struct FileOutput {
-    pub filename: PathBuf,
-    pub present: bool,
-    pub mode: u32,
-}
-
-#[derive(PartialOrd, Ord, PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
-pub enum Output {
-    File(FileOutput),
-    ExitCode(i32),
-    Stdout(Vec<u8>),
-    Stderr(Vec<u8>),
-}
-
-#[derive(Debug, Default, Serialize, Deserialize, Clone)]
-pub struct OutputHashBundle {
-    pub hash: String,
-    pub hash_details: Vec<(Output, String)>,
-}
-
-impl OutputHashBundle {
-
-    // Find the result code in all the fields.
-    pub fn result_code(&self) -> Option<i32> {
-        for (output, _) in &self.hash_details {
-            if let Output::ExitCode(code) = output {
-                return Some(*code);
-            }
-        }
-        None
-    }
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct InputOutputBundle {
-    pub inputs: HashBundle,
-    pub outputs: OutputHashBundle,
-}
-
-/// Output set is the set of all process outputs.
-#[derive(Default)]
-pub struct OutputSet {
-    pub outputs: Vec<Output>,
 }
 
 impl OutputSet {
@@ -181,31 +183,33 @@ impl OutputSet {
         // Calculate the hash of the input set independently of the order.
         let mut hash_bundle = OutputHashBundle::default();
         for output in self.outputs {
-            match output {
+            let hash = match output {
                 Output::File(ref file_output) => {
-                    let tag = if file_output.present {
-                        format!("File{}", file_hash(&file_output.filename)?)
+                    if file_output.present {
+                       file_hash(&file_output.filename)?
                     } else {
-                        "FileNonExistent".to_string()
-                    };
-                    hash_bundle.hash_details.push((output, tag));
-                }
-                Output::ExitCode(code) => {
-                    hash_bundle.hash_details.push((output, format!("ExitCode{}", code)));
-                }
-                Output::Stdout(ref buffer) => {
-                    let hash = format!("Stdout{}", bytes_hash(buffer));
-                    hash_bundle.hash_details.push((output, hash));
-                }
-                Output::Stderr(ref buffer) => {
-                    let hash = format!("Stderr{}", bytes_hash(buffer));
-                    hash_bundle.hash_details.push((output, hash));
-                }
-            }
+                        "".to_string()
+                    }
+                },
+                Output::ExitCode(code) => string_hash(&code.to_string()),
+                Output::Stdout(ref buffer) => bytes_hash(buffer),
+                Output::Stderr(ref buffer) => bytes_hash(buffer),
+            };
+            hash_bundle.hash_details.push((output, hash));
         }
         // Sort inputs hashes by the hash value.
         hash_bundle.hash_details.sort_by(|a, b| a.1.cmp(&b.1));
-        hash_bundle.hash = bundle_hash(&hash_bundle.hash_details);
+        hash_bundle.hash = bundle_hash(hash_bundle.hash_details.iter().map(|(inp, hash)| {
+            (
+                match inp {
+                    Output::File(_) => "File",
+                    Output::ExitCode(_) => "ExitCode",
+                    Output::Stdout(_) => "StdOut",
+                    Output::Stderr(_) => "StdErr",
+                },
+                &hash[..],
+            )
+        }));
         Ok(hash_bundle)
     }
 
