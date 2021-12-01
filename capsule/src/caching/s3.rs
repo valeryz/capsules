@@ -15,7 +15,7 @@ use tokio_util::codec;
 
 use crate::caching::backend::CachingBackend;
 use crate::config::Config;
-use crate::iohashing::{FileOutput, HashBundle, InputOutputBundle, Output, OutputHashBundle};
+use crate::iohashing::{FileOutput, InputHashBundle, InputOutputBundle, Output, OutputHashBundle};
 
 pub struct S3Backend {
     /// S3 bucket for keys
@@ -104,7 +104,7 @@ impl CachingBackend for S3Backend {
     }
 
     /// Lookup inputs in S3.
-    async fn lookup(&self, inputs: &HashBundle) -> Result<Option<InputOutputBundle>> {
+    async fn lookup(&self, inputs: &InputHashBundle) -> Result<Option<InputOutputBundle>> {
         let key = self.normalize_key(&inputs.hash);
         let request = GetObjectRequest {
             bucket: self.bucket.clone(),
@@ -154,7 +154,7 @@ impl CachingBackend for S3Backend {
     }
 
     /// Write hashes of inputs and outputs into S3, keyed by hashes of inputs.
-    async fn write(&self, inputs: &HashBundle, outputs: &OutputHashBundle) -> Result<()> {
+    async fn write(&self, inputs: &InputHashBundle, outputs: &OutputHashBundle) -> Result<()> {
         let io_bundle = InputOutputBundle {
             inputs: inputs.clone(),
             outputs: outputs.clone(),

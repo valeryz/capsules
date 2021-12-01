@@ -1,6 +1,6 @@
 use crate::{
     config::Config,
-    iohashing::{HashBundle, Input, Output, OutputHashBundle},
+    iohashing::{InputHashBundle, Input, Output, OutputHashBundle},
 };
 use anyhow::anyhow;
 use anyhow::Result;
@@ -60,7 +60,7 @@ impl Honeycomb {
 const MAX_JSON_ENTRIES: usize = 500;
 
 /// Convert hash deails (with each filename and tool_tag separately) to JSON.
-fn hash_details_to_json(bundle: &HashBundle) -> serde_json::Value {
+fn hash_details_to_json(bundle: &InputHashBundle) -> serde_json::Value {
     let mut file_map = serde_json::Map::<String, serde_json::Value>::new();
     let mut tool_tag_map = serde_json::Map::<String, serde_json::Value>::new();
     for (input, hash) in bundle.hash_details.iter() {
@@ -122,7 +122,7 @@ fn output_hash_details_to_json(bundle: &OutputHashBundle) -> serde_json::Value {
 impl Logger for Honeycomb {
     async fn log(
         &self,
-        inputs_bundle: &HashBundle,
+        inputs_bundle: &InputHashBundle,
         output_bundle: &OutputHashBundle,
         result_from_cache: bool,
         non_determinism: bool,

@@ -2,7 +2,7 @@ use crate::caching::backend::CachingBackend;
 use anyhow::Result;
 use async_trait::async_trait;
 
-use crate::iohashing::{HashBundle, OutputHashBundle, InputOutputBundle};
+use crate::iohashing::{InputHashBundle, OutputHashBundle, InputOutputBundle};
 
 #[derive(Default)]
 pub struct DummyBackend {
@@ -16,7 +16,7 @@ impl CachingBackend for DummyBackend {
         "dummy"
     }
 
-    async fn lookup(&self, _inputs: &HashBundle) -> Result<Option<InputOutputBundle>> {
+    async fn lookup(&self, _inputs: &InputHashBundle) -> Result<Option<InputOutputBundle>> {
         // Always return a cache miss.
         Ok(None)
     }
@@ -26,7 +26,7 @@ impl CachingBackend for DummyBackend {
         Ok(())
     }
 
-    async fn write(&self, inputs: &HashBundle, outputs: &OutputHashBundle) -> Result<()> {
+    async fn write(&self, inputs: &InputHashBundle, outputs: &OutputHashBundle) -> Result<()> {
         println!(
             "Capsule ID: '{}'. Inputs key: '{}', Outputs key: {}",
             self.capsule_id,

@@ -21,13 +21,6 @@ pub struct InputSet {
     pub inputs: Vec<Input>,
 }
 
-// TODO: Make sure we can serialize/deserialize hash bundles.
-#[derive(Debug, Default, Serialize, Deserialize, Clone)]
-pub struct HashBundle {
-    pub hash: String,
-    pub hash_details: Vec<(Input, String)>,
-}
-
 #[derive(PartialOrd, Ord, PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
 pub struct FileOutput {
     pub filename: PathBuf,
@@ -41,6 +34,12 @@ pub enum Output {
     ExitCode(i32),
     Stdout(Vec<u8>),
     Stderr(Vec<u8>),
+}
+
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
+pub struct InputHashBundle {
+    pub hash: String,
+    pub hash_details: Vec<(Input, String)>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
@@ -63,7 +62,7 @@ impl OutputHashBundle {
 
 #[derive(Serialize, Deserialize)]
 pub struct InputOutputBundle {
-    pub inputs: HashBundle,
+    pub inputs: InputHashBundle,
     pub outputs: OutputHashBundle,
 }
 
@@ -127,9 +126,9 @@ impl InputSet {
     ///
     /// It does this by calculating a SHA256 hash of all SHA256 hashes of inputs (being either file
     /// or tool tag) sorted by the values of the hashes themselves.
-    pub fn hash_bundle(self) -> Result<HashBundle> {
+    pub fn hash_bundle(self) -> Result<InputHashBundle> {
         // Calculate the hash of the input set independently of the order.
-        let mut hash_bundle = HashBundle::default();
+        let mut hash_bundle = InputHashBundle::default();
         for input in self.inputs {
             let hash = match input {
                 Input::File(ref s) => file_hash(s)?,

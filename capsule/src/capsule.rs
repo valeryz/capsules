@@ -39,7 +39,7 @@ impl<'a> Capsule<'a> {
         self.config.capsule_id.as_ref().cloned().unwrap()
     }
 
-    pub fn read_inputs(&self) -> Result<HashBundle> {
+    pub fn read_inputs(&self) -> Result<InputHashBundle> {
         let mut inputs = InputSet::default();
         for file_pattern in &self.config.input_files {
             for file in glob(file_pattern)? {
@@ -97,7 +97,7 @@ impl<'a> Capsule<'a> {
 
     async fn execute_and_cache(
         &self,
-        inputs: &HashBundle,
+        inputs: &InputHashBundle,
         lookup_result: &Option<InputOutputBundle>,
         program_run: &mut bool,
     ) -> Result<ExitStatus> {
