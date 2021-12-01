@@ -394,7 +394,7 @@ impl Config {
         let patterns = self
             .output_files
             .iter()
-            .map(|path| glob::Pattern::from_str(&path))
+            .map(|path| glob::Pattern::from_str(path))
             .collect::<Result<Vec<glob::Pattern>, _>>()
             .with_context(|| "Invalid output file pattern")?;
         // For each given path, try to find at least one match in the patterns.

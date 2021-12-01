@@ -183,7 +183,7 @@ impl<'a> Capsule<'a> {
                     fn predicate<X>((output, _) : &(Output, X)) -> Option<&Path> {
                         if let Output::File(fileoutput) = output {
                             if fileoutput.present {
-                                return Some(fileoutput.filename.as_path())
+                                return Some(fileoutput.filename.as_path());
                             }
                         }
                         None
