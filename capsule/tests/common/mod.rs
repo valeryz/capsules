@@ -120,7 +120,7 @@ pub fn capsule(port: u16, args: &[&str]) {
         .env(
             "CAPSULE_ARGS",
             format!(
-                "--s3_bucket=capsule-test --s3_region=eu-central-1 --s3_endpoint=http://127.0.0.1:{}",
+                "--s3_bucket=capsule-test --s3_bucket_objects=capsule_objects --s3_region=eu-central-1 --s3_endpoint=http://127.0.0.1:{}",
                 port
             ),
         )
