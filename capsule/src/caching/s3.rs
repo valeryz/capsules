@@ -91,6 +91,10 @@ impl S3Backend {
     }
 }
 
+// TODO(valeryz): the implementaiton logic of read_files/write_files etc. has too many things that have little
+// to do with S3, but rather reflect capsule logic. This should be refactored - methods should be extracted
+// and moved to capsule.rs.
+
 #[async_trait]
 impl CachingBackend for S3Backend {
     fn name(&self) -> &'static str {
