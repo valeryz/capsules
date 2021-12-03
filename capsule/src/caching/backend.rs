@@ -2,7 +2,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use std::fmt;
 
-use crate::iohashing::{HashBundle, OutputHashBundle, InputOutputBundle};
+use crate::iohashing::{InputHashBundle, InputOutputBundle, OutputHashBundle};
 
 #[async_trait]
 pub trait CachingBackend {
@@ -10,9 +10,14 @@ pub trait CachingBackend {
         "backend"
     }
 
-    async fn lookup(&self, inputs: &HashBundle) -> Result<Option<InputOutputBundle>>;
+    async fn lookup(&self, inputs: &InputHashBundle) -> Result<Option<InputOutputBundle>>;
 
-    async fn write(&self, _inputs: HashBundle, _outputs: OutputHashBundle) -> Result<()>;
+    /// Read all output files from S3, and place them into destination paths.
+    async fn read_files(&self, outputs: &OutputHashBundle) -> Result<()>;
+
+    async fn write(&self, inputs: &InputHashBundle, outputs: &OutputHashBundle) -> Result<()>;
+
+    async fn write_files(&self, outputs: &OutputHashBundle) -> Result<()>;
 }
 
 impl fmt::Debug for dyn CachingBackend {

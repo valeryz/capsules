@@ -3,10 +3,15 @@ use anyhow::{Context, Result};
 
 use glob::glob;
 use indoc::indoc;
+use std::os::unix::fs::PermissionsExt;
+use std::os::unix::prelude::ExitStatusExt;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus};
 
+use futures::join;
+
 use crate::caching::backend::CachingBackend;
-use crate::config::Config;
+use crate::config::{Config, Milestone};
 use crate::iohashing::*;
 use crate::observability::logger::Logger;
 
@@ -35,11 +40,7 @@ impl<'a> Capsule<'a> {
         self.config.capsule_id.as_ref().cloned().unwrap()
     }
 
-    pub fn hash(&self) -> Result<String> {
-        self.read_inputs().map(|inputs| inputs.hash)
-    }
-
-    pub fn read_inputs(&self) -> Result<HashBundle> {
+    pub fn read_inputs(&self) -> Result<InputHashBundle> {
         let mut inputs = InputSet::default();
         for file_pattern in &self.config.input_files {
             for file in glob(file_pattern)? {
@@ -65,6 +66,7 @@ impl<'a> Capsule<'a> {
             outputs.add_output(Output::ExitCode(exit_code));
         }
         for file_pattern in &self.config.output_files {
+            let mut present = false;
             for file in glob(file_pattern)? {
                 let file = file?;
                 if file.is_dir() {
@@ -74,13 +76,18 @@ impl<'a> Capsule<'a> {
                     outputs.add_output(Output::File(FileOutput {
                         filename: file.to_path_buf(),
                         present: true,
+                        mode: file.metadata()?.permissions().mode(),
                     }));
-                } else {
-                    outputs.add_output(Output::File(FileOutput {
-                        filename: file.to_path_buf(),
-                        present: false,
-                    }));
+                    present = true;
                 }
+            }
+            if !present {
+                // This seems to be a file that hasn't matched.
+                outputs.add_output(Output::File(FileOutput {
+                    filename: PathBuf::from(file_pattern),
+                    present: false,
+                    mode: 0o644, // Default permissions just in case.
+                }));
             }
         }
         let capsule_id = self.capsule_id();
@@ -93,19 +100,12 @@ impl<'a> Capsule<'a> {
         left.hash == right.hash
     }
 
-    pub async fn run_capsule(&self, program_run: &mut bool) -> Result<ExitStatus> {
-        let inputs = self.read_inputs()?;
-        let lookup_result = self.caching_backend.lookup(&inputs).await?;
-        let cache_hit = lookup_result.is_some();
-        if cache_hit {
-            println!(
-                "Cache hit on {}: ignoring and proceeding with execution",
-                self.capsule_id()
-            );
-        }
-
-        // TODO: skip execution in blue pill on cache hit.
-
+    async fn execute_and_cache(
+        &self,
+        inputs: &InputHashBundle,
+        lookup_result: &Option<InputOutputBundle>,
+        program_run: &mut bool,
+    ) -> Result<ExitStatus> {
         eprintln!("Executing command: {:?}", self.config.command_to_run);
         let mut child = self.execute_command()?;
         // Having executed the command, just need to tell our caller
@@ -118,10 +118,9 @@ impl<'a> Capsule<'a> {
         // If we fail along the way, we should complain, but still continue.
         match self.read_outputs(exit_status.code()) {
             Ok(outputs) => {
-                let non_determinism = cache_hit
-                    && lookup_result.as_ref().map_or(false, |lookup_result| {
-                        !Self::equal_outputs(&lookup_result.outputs, &outputs)
-                    });
+                let non_determinism = lookup_result.as_ref().map_or(false, |lookup_result| {
+                    !Self::equal_outputs(&lookup_result.outputs, &outputs)
+                });
 
                 if non_determinism {
                     eprintln!(
@@ -130,24 +129,24 @@ impl<'a> Capsule<'a> {
                         Old: {:?}
                         vs
                         New: {:?}\n"},
-                        &(lookup_result.unwrap().outputs),
+                        lookup_result.as_ref().unwrap().outputs,
                         &outputs
                     );
                 }
 
-                // TODO: make these truly async simultaneous to onw another. It is atm complicated
-                // because caching_backend.write moves its args.
-
-                // We try logging for observability, but we will not stop it if there was a problem,
-                // only try complaining about it.
-                self.logger
-                    .log(&inputs, &outputs, non_determinism)
-                    .await
-                    .unwrap_or_else(|err| {
-                        eprintln!("Failed to log results for observability: {}", err);
-                    });
-                self.caching_backend.write(inputs, outputs).await.unwrap_or_else(|err| {
+                let logger_fut = self.logger.log(inputs, &outputs, false, non_determinism);
+                let cache_write_fut = self.caching_backend.write(inputs, &outputs);
+                let cache_writefiles_fut = self.caching_backend.write_files(&outputs);
+                let (logger_result, cache_result, cache_files_result) =
+                    join!(logger_fut, cache_write_fut, cache_writefiles_fut);
+                logger_result.unwrap_or_else(|err| {
+                    eprintln!("Failed to log results for observability: {}", err);
+                });
+                cache_result.unwrap_or_else(|err| {
                     eprintln!("Failed to write entry to cache: {}", err);
+                });
+                cache_files_result.unwrap_or_else(|err| {
+                    eprintln!("Failed to write output files to cache: {}", err);
                 });
             }
             Err(err) => {
@@ -155,6 +154,84 @@ impl<'a> Capsule<'a> {
             }
         }
         Ok(exit_status)
+    }
+
+    pub async fn run_capsule(&self, program_run: &mut bool) -> Result<i32> {
+        let inputs = self.read_inputs()?;
+        let lookup_result = self.caching_backend.lookup(&inputs).await?;
+        if let Some(ref lookup_result) = lookup_result {
+            // We have a cache hit, but in case we are in placebo mode, or we have cached a failure,
+            // we should still not use the cache. Let's figure this out while printing the solution.
+            let mut use_cache = true;
+            if self.config.milestone == Milestone::Placebo {
+                println!(
+                    "Cache hit on {}: ignoring and proceeding with execution.",
+                    self.capsule_id()
+                );
+                use_cache = false
+            } else {
+                if !self.config.cache_failure {
+                    // If result code from the command is not 0
+                    if lookup_result.outputs.result_code().unwrap_or(1) != 0 {
+                        println!(
+                            "Cache hit on {}: cached failure, proceeding with execution.",
+                            self.capsule_id()
+                        );
+                        use_cache = false;
+                    }
+                }
+                // Check whether we should avoid caching when output files from the cache hit
+                // don't match with the capsule output files from config.
+                if use_cache {
+                    // a predicate selecting all paths for Output::Files from all cached outputs.
+                    fn predicate<X>((output, _): &(Output, X)) -> Option<&Path> {
+                        if let Output::File(fileoutput) = output {
+                            if fileoutput.present {
+                                return Some(fileoutput.filename.as_path());
+                            }
+                        }
+                        None
+                    }
+                    let iter = lookup_result.outputs.hash_details.iter().filter_map(predicate);
+                    // If anything doesn't match, don't use the cache!
+                    if !self.config.outputs_match(iter)? {
+                        eprintln!(
+                            "Cache hit on {}: mismatch in output patterns, proceeding with execution",
+                            self.capsule_id()
+                        );
+                        use_cache = false;
+                    }
+                }
+            }
+
+            if use_cache {
+                match self.caching_backend.read_files(&lookup_result.outputs).await {
+                    Ok(_) => {
+                        println!("Cache hit on {}: success.", self.capsule_id());
+                        // Log successful cached results.
+                        self.logger
+                            .log(&inputs, &lookup_result.outputs, true, false)
+                            .await
+                            .unwrap_or_else(|err| {
+                                eprintln!("Failed to log results for observability: {}", err);
+                            });
+                        return Ok(lookup_result.outputs.result_code().unwrap_or(127));
+                    }
+                    Err(e) => {
+                        println!(
+                            "Cache hit on {}: failed to retrieve from the cache: {}",
+                            self.capsule_id(),
+                            e
+                        );
+                    }
+                }
+            }
+        }
+
+        // If we got here, we should execute.
+        self.execute_and_cache(&inputs, &lookup_result, program_run)
+            .await
+            .map(|exit_status| exit_status.into_raw())
     }
 
     pub fn execute_command(&self) -> Result<Child> {
@@ -189,9 +266,9 @@ mod tests {
     #[serial]
     fn test_empty_capsule() {
         let backend = Box::new(dummy::DummyBackend::default());
-        let config = Config::new(["capsule", "-c", "wtf", "--", "/bin/echo"], None, None).unwrap();
+        let config = Config::new(["capsule", "-c", "wtf", "--", "/bin/echo"].iter(), None, None).unwrap();
         let capsule = Capsule::new(&config, backend, Box::new(Dummy));
-        assert_eq!(capsule.hash().unwrap(), EMPTY_SHA256);
+        assert_eq!(capsule.read_inputs().unwrap().hash, EMPTY_SHA256);
     }
 
     #[test]
@@ -199,7 +276,7 @@ mod tests {
     fn test_nonexistent_glob() {
         let backend = Box::new(dummy::DummyBackend::default());
         let config = Config::new(
-            ["capsule", "-c", "wtf", "-i", "/nonexistent-glob", "--", "/bin/echo"],
+            ["capsule", "-c", "wtf", "-i", "/nonexistent-glob", "--", "/bin/echo"].iter(),
             None,
             None,
         )
@@ -213,7 +290,7 @@ mod tests {
     fn test_ok_glob() {
         let backend = Box::new(dummy::DummyBackend::default());
         let config = Config::new(
-            ["capsule", "-c", "wtf", "-i", "/bin/echo", "--", "/bin/echo"],
+            ["capsule", "-c", "wtf", "-i", "/bin/echo", "--", "/bin/echo"].iter(),
             None,
             None,
         )
@@ -228,7 +305,12 @@ mod tests {
     #[serial]
     fn test_invalid_glob() {
         let backend = Box::new(dummy::DummyBackend::default());
-        let config = Config::new(["capsule", "-c", "wtf", "-i", "***", "--", "/bin/echo"], None, None).unwrap();
+        let config = Config::new(
+            ["capsule", "-c", "wtf", "-i", "***", "--", "/bin/echo"].iter(),
+            None,
+            None,
+        )
+        .unwrap();
         let capsule = Capsule::new(&config, backend, Box::new(Dummy));
         assert!(capsule.read_inputs().is_err());
     }
@@ -260,7 +342,8 @@ mod tests {
                 &format!("{}/**/111", root.to_str().unwrap()),
                 "--",
                 "/bin/echo",
-            ],
+            ]
+            .iter(),
             None,
             None,
         )
@@ -294,7 +377,8 @@ mod tests {
                 &format!("{}/*/111", root.to_str().unwrap()),
                 "--",
                 "/bin/echo",
-            ],
+            ]
+            .iter(),
             None,
             None,
         )
@@ -323,7 +407,8 @@ mod tests {
                 &format!("{}/**/*", root.to_str().unwrap()),
                 "--",
                 "/bin/echo",
-            ],
+            ]
+            .iter(),
             None,
             None,
         )

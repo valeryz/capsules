@@ -9,9 +9,8 @@ use capsule::observability::honeycomb;
 use capsule::observability::logger::Logger;
 use capsule::wrapper;
 use std::env;
-use std::os::unix::prelude::ExitStatusExt;
-use std::process;
 use std::path::Path;
+use std::process;
 
 fn create_capsule(config: &Config) -> Result<Capsule<'_>> {
     // First, instantiate our caching backend (S3, Dummy, or possibly other in the future).
@@ -34,9 +33,7 @@ fn create_capsule(config: &Config) -> Result<Capsule<'_>> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let default_toml = std::env::var("HOME")
-        .ok()
-        .map(|home| home + "/.capsules.toml");
+    let default_toml = std::env::var("HOME").ok().map(|home| home + "/.capsules.toml");
     let config = Config::new(
         env::args(),
         default_toml.as_ref().map(Path::new),
@@ -50,9 +47,9 @@ async fn main() -> Result<()> {
     let result = capsule.run_capsule(&mut program_run).await;
 
     match result {
-        Ok(exit_status) => {
+        Ok(exit_code) => {
             // Pass the exit code of the wrapped program as our exit code.
-            process::exit(exit_status.into_raw());
+            process::exit(exit_code);
         }
         Err(err) => {
             eprintln!("Capsule error: {:#}", err);

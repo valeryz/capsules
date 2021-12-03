@@ -66,8 +66,7 @@ fn wait_for_bind(port: u16) -> Result<()> {
 }
 
 fn wait_for_connect(port: u16) -> Result<()> {
-    let count =
-        wait_for_port_availability(port, |port| net::TcpStream::connect(("127.0.0.1", port)))?;
+    let count = wait_for_port_availability(port, |port| net::TcpStream::connect(("127.0.0.1", port)))?;
     println!("Waiting for connect in {} steps", count);
     Ok(())
 }
@@ -118,8 +117,13 @@ pub fn capsule(port: u16, args: &[&str]) {
         .expect("Couldn't find capsule target")
         .env("AWS_ACCESS_KEY_ID", "minioadmin")
         .env("AWS_SECRET_ACCESS_KEY", "minioadmin")
-        .env("CAPSULE_ARGS",
-             format!("--s3_bucket=capsule-test --s3_region=eu-central-1 --s3_endpoint=http://127.0.0.1:{}", port))
+        .env(
+            "CAPSULE_ARGS",
+            format!(
+                "--s3_bucket=capsule-test --s3_bucket_objects=capsule_objects --s3_region=eu-central-1 --s3_endpoint=http://127.0.0.1:{}",
+                port
+            ),
+        )
         .args(args)
         .output()
         .expect("Couldn't execute capsule");

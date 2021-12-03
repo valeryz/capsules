@@ -25,7 +25,6 @@ build-test-debug-nightly:
     cd capsule
     cargo build --verbose --package capsule
     cargo test --verbose --package capsule
-  allow_failure: true
 
 build-release:
   stage: build

@@ -62,8 +62,7 @@ fn test_s3_cache_hit() {
     );
     println!("Checking file {:?}", side_effect);
     // Verify that the second time the side effect is absent.
-    // TODO: this is not yet true in placebo!
-    assert!(side_effect.exists());
+    assert!(!side_effect.exists());
 }
 
 #[test]

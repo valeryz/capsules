@@ -1,6 +1,6 @@
 use crate::{
     config::Config,
-    iohashing::{HashBundle, Input, Output, OutputHashBundle},
+    iohashing::{Input, InputHashBundle, Output, OutputHashBundle},
 };
 use anyhow::anyhow;
 use anyhow::Result;
@@ -60,7 +60,7 @@ impl Honeycomb {
 const MAX_JSON_ENTRIES: usize = 500;
 
 /// Convert hash deails (with each filename and tool_tag separately) to JSON.
-fn hash_details_to_json(bundle: &HashBundle) -> serde_json::Value {
+fn hash_details_to_json(bundle: &InputHashBundle) -> serde_json::Value {
     let mut file_map = serde_json::Map::<String, serde_json::Value>::new();
     let mut tool_tag_map = serde_json::Map::<String, serde_json::Value>::new();
     for (input, hash) in bundle.hash_details.iter() {
@@ -120,10 +120,17 @@ fn output_hash_details_to_json(bundle: &OutputHashBundle) -> serde_json::Value {
 
 #[async_trait]
 impl Logger for Honeycomb {
-    async fn log(&self, inputs_bundle: &HashBundle, output_bundle: &OutputHashBundle, non_determinism: bool) -> Result<()> {
+    async fn log(
+        &self,
+        inputs_bundle: &InputHashBundle,
+        output_bundle: &OutputHashBundle,
+        result_from_cache: bool,
+        non_determinism: bool,
+    ) -> Result<()> {
         let mut map = serde_json::Map::new();
         map.insert("trace.trace_id".into(), self.trace_id.clone().into());
         map.insert("trace.span_id".into(), self.capsule_id.clone().into());
+        map.insert("result_from_cache".into(), result_from_cache.into());
         map.insert("non_determinism".into(), non_determinism.into());
         map.insert("inputs_hash".into(), inputs_bundle.hash.clone().into());
         map.insert("inputs_hash_details".into(), hash_details_to_json(inputs_bundle));
