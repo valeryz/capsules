@@ -7,6 +7,7 @@ use rusoto_core::region::Region;
 use rusoto_s3::{GetObjectRequest, PutObjectRequest, S3Client, S3 as _};
 use serde_cbor;
 use std::fs as std_fs;
+use std::io::ErrorKind;
 use std::os::unix::fs::PermissionsExt;
 use tempfile::NamedTempFile;
 use tokio::fs as tokio_fs;
@@ -59,12 +60,7 @@ impl S3Backend {
     }
 
     fn normalize_key(&self, key: &str) -> String {
-        format!(
-            "{}/{}/{}",
-            &self.capsule_id,
-            &key[0..2],
-            key
-        )
+        format!("{}/{}/{}", &self.capsule_id, &key[0..2], key)
     }
 
     fn normalize_object_key(&self, key: &str) -> String {
@@ -135,15 +131,27 @@ impl CachingBackend for S3Backend {
 
     /// Read all output files from S3, and place them into destination paths.
     async fn read_files(&self, outputs: &OutputHashBundle) -> Result<()> {
+        // First, try removing files that should not be present, and bail out if we fail with that,
+        // before starting any S3 downloads.
+        for (item, _) in &outputs.hash_details {
+            if let Output::File(ref fileoutput) = item {
+                if !fileoutput.present {
+                    // If the file should not be present, let's remove it, ignoring ENOENT.
+                    if let Err(e) = std_fs::remove_file(&fileoutput.filename) {
+                        if !matches!(e.kind(), ErrorKind::NotFound) {
+                            return Err(e.into());
+                        }
+                    }
+                }
+            }
+        }
+        // Now download all files that should be present.
         let mut all_files_futures = Vec::new();
         for (item, item_hash) in &outputs.hash_details {
             if let Output::File(ref fileoutput) = item {
                 if fileoutput.present {
                     let download_file_fut = self.read_move_object_file(fileoutput, item_hash);
                     all_files_futures.push(download_file_fut);
-                } else {
-                    std_fs::remove_file(&fileoutput.filename)
-                        .unwrap_or_else(|err| eprintln!("Failed to remove file {}", err));
                 }
             }
         }
