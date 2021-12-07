@@ -1,12 +1,16 @@
 use anyhow::anyhow;
 use anyhow::{Context, Result};
 
+use futures::{future::try_join_all};
 use glob::glob;
 use indoc::indoc;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::prelude::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus};
+use std::io::ErrorKind;
+use tempfile::NamedTempFile;
+use tokio::io::AsyncWriteExt;
 
 use futures::join;
 
@@ -156,6 +160,50 @@ impl<'a> Capsule<'a> {
         Ok(exit_status)
     }
 
+    /// Read all output files from the caching backend, and place them into destination paths.
+    async fn read_files(&self, outputs: &OutputHashBundle) -> Result<()> {
+        // First, try removing files that should not be present, and bail out if we fail with that,
+        // before starting any S3 downloads.
+        for (item, _) in &outputs.hash_details {
+            if let Output::File(ref fileoutput) = item {
+                if !fileoutput.present {
+                    // If the file should not be present, let's remove it, ignoring ENOENT.
+                    if let Err(e) = std::fs::remove_file(&fileoutput.filename) {
+                        if !matches!(e.kind(), ErrorKind::NotFound) {
+                            return Err(e.into());
+                        }
+                    }
+                }
+            }
+        }
+        // Now download all files that should be present.
+        let mut all_files_futures = Vec::new();
+        for (item, item_hash) in &outputs.hash_details {
+            if let Output::File(ref fileoutput) = item {
+                if fileoutput.present {
+                    let dir = fileoutput.filename.parent().context("No parent directory")?;
+                    let file = NamedTempFile::new_in(dir)?;
+                    let (file, path) = file.into_parts();
+                    let mut file_stream = tokio::fs::File::from_std(file);
+                    let download_file_fut = async move {
+                        let mut file_body_reader = self.caching_backend.read_object_file(item_hash).await?;
+                        tokio::io::copy(&mut file_body_reader, &mut file_stream).await?;
+                        file_stream.flush().await?;
+                        path.persist(&fileoutput.filename)?;
+                        std::fs::set_permissions(
+                                &fileoutput.filename,
+                                std::fs::Permissions::from_mode(fileoutput.mode),
+                        )?;
+                        Ok::<(), anyhow::Error>(())
+                    };
+                    all_files_futures.push(download_file_fut);
+                }
+            }
+        }
+        try_join_all(all_files_futures).await?;
+        Ok(())
+    }
+
     pub async fn run_capsule(&self, program_run: &mut bool) -> Result<i32> {
         let inputs = self.read_inputs()?;
         let lookup_result = self.caching_backend.lookup(&inputs).await?;
@@ -205,7 +253,7 @@ impl<'a> Capsule<'a> {
             }
 
             if use_cache {
-                match self.caching_backend.read_files(&lookup_result.outputs).await {
+                match self.read_files(&lookup_result.outputs).await {
                     Ok(_) => {
                         println!("Cache hit on {}: success.", self.capsule_id());
                         // Log successful cached results.

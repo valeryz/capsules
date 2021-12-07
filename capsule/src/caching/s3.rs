@@ -6,17 +6,14 @@ use hyperx::header::CacheDirective;
 use rusoto_core::region::Region;
 use rusoto_s3::{GetObjectRequest, PutObjectRequest, S3Client, S3 as _};
 use serde_cbor;
-use std::fs as std_fs;
-use std::io::ErrorKind;
-use std::os::unix::fs::PermissionsExt;
-use tempfile::NamedTempFile;
 use tokio::fs as tokio_fs;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio_util::codec;
+use std::pin::Pin;
 
 use crate::caching::backend::CachingBackend;
 use crate::config::Config;
-use crate::iohashing::{FileOutput, InputHashBundle, InputOutputBundle, Output, OutputHashBundle};
+use crate::iohashing::{InputHashBundle, InputOutputBundle, Output, OutputHashBundle};
 
 pub struct S3Backend {
     /// S3 bucket for keys
@@ -66,29 +63,6 @@ impl S3Backend {
     fn normalize_object_key(&self, key: &str) -> String {
         format!("{}/{}", &key[0..2], key)
     }
-
-    // Read a file object from S3, and place it at its output path by first reading asynchronously
-    // from the S3 stream into a temp file, and then persisting (moving) into the destination name.
-    async fn read_move_object_file(&self, fileoutput: &FileOutput, item_hash: &str) -> Result<()> {
-        let key = self.normalize_object_key(item_hash);
-        let request = GetObjectRequest {
-            bucket: self.bucket_objects.clone(),
-            key,
-            ..Default::default()
-        };
-        let response = self.client.get_object(request).await?;
-        let body = response.body.context("No reponse body")?;
-        let dir = fileoutput.filename.parent().context("No parent directory")?;
-        let file = NamedTempFile::new_in(dir)?;
-        let (file, path) = file.into_parts();
-        let mut file_stream = tokio::fs::File::from_std(file);
-        let mut body_reader = body.into_async_read();
-        tokio::io::copy(&mut body_reader, &mut file_stream).await?;
-        file_stream.flush().await?;
-        path.persist(&fileoutput.filename)?;
-        std_fs::set_permissions(&fileoutput.filename, std_fs::Permissions::from_mode(fileoutput.mode))?;
-        Ok(())
-    }
 }
 
 // TODO(valeryz): the implementaiton logic of read_files/write_files etc. has too many things that have little
@@ -133,34 +107,17 @@ impl CachingBackend for S3Backend {
         }
     }
 
-    /// Read all output files from S3, and place them into destination paths.
-    async fn read_files(&self, outputs: &OutputHashBundle) -> Result<()> {
-        // First, try removing files that should not be present, and bail out if we fail with that,
-        // before starting any S3 downloads.
-        for (item, _) in &outputs.hash_details {
-            if let Output::File(ref fileoutput) = item {
-                if !fileoutput.present {
-                    // If the file should not be present, let's remove it, ignoring ENOENT.
-                    if let Err(e) = std_fs::remove_file(&fileoutput.filename) {
-                        if !matches!(e.kind(), ErrorKind::NotFound) {
-                            return Err(e.into());
-                        }
-                    }
-                }
-            }
-        }
-        // Now download all files that should be present.
-        let mut all_files_futures = Vec::new();
-        for (item, item_hash) in &outputs.hash_details {
-            if let Output::File(ref fileoutput) = item {
-                if fileoutput.present {
-                    let download_file_fut = self.read_move_object_file(fileoutput, item_hash);
-                    all_files_futures.push(download_file_fut);
-                }
-            }
-        }
-        try_join_all(all_files_futures).await?;
-        Ok(())
+    /// Read a file object from the storage, and return AsyncRead object for consuming by capsule.
+    async fn read_object_file(&self, item_hash: &str) -> Result<Pin<Box<dyn AsyncRead>>> {
+        let key = self.normalize_object_key(item_hash);
+        let request = GetObjectRequest {
+            bucket: self.bucket_objects.clone(),
+            key,
+            ..Default::default()
+        };
+        let response = self.client.get_object(request).await?;
+        let body = response.body.context("No reponse body")?;
+        Ok(Box::pin(body.into_async_read()))
     }
 
     /// Write hashes of inputs and outputs into S3, keyed by hashes of inputs.
