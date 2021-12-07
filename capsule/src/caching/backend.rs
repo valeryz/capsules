@@ -19,11 +19,11 @@ pub trait CachingBackend {
     /// Write a cache entry keyed by input, containing hashes of outputs.
     async fn write(&self, inputs: &InputHashBundle, outputs: &OutputHashBundle) -> Result<()>;
 
-    /// Read a file addressed by item_hash from the backend storage, and return an AsyncRead handle
+    /// Download a file addressed by item_hash from the backend storage, and return an AsyncRead handle
     /// that allows the caller to keep asynchrnously fetching the content.
-    async fn read_object_file(&self, item_hash: &str) -> Result<Pin<Box<dyn AsyncRead>>>;
+    async fn download_object_file(&self, item_hash: &str) -> Result<Pin<Box<dyn AsyncRead>>>;
 
-    async fn write_object_file(
+    async fn upload_object_file(
         &self,
         item_hash: &str,
         file: Pin<Box<dyn AsyncRead + Send>>,

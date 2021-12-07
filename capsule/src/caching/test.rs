@@ -46,20 +46,20 @@ impl CachingBackend for TestBackend {
         }
     }
 
-    async fn read_object_file(&self, item_hash: &str) -> Result<Pin<Box<dyn AsyncRead>>> {
+    async fn write(&self, inputs: &InputHashBundle, outputs: &OutputHashBundle) -> Result<()> {
+        Ok(())
+    }
+
+    async fn download_object_file(&self, item_hash: &str) -> Result<Pin<Box<dyn AsyncRead>>> {
         Ok(Box::pin(tokio::io::empty()))
     }
 
-    async fn write_object_file(
+    async fn upload_object_file(
         &self,
         item_hash: &str,
         file: Pin<Box<dyn AsyncRead + Send>>,
         content_length: u64,
     ) -> Result<()> {
-        Ok(())
-    }
-
-    async fn write(&self, inputs: &InputHashBundle, outputs: &OutputHashBundle) -> Result<()> {
         Ok(())
     }
 }

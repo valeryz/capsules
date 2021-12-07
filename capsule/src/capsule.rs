@@ -140,7 +140,7 @@ impl<'a> Capsule<'a> {
 
                 let logger_fut = self.logger.log(inputs, &outputs, false, non_determinism);
                 let cache_write_fut = self.caching_backend.write(inputs, &outputs);
-                let cache_writefiles_fut = self.write_files(&outputs);
+                let cache_writefiles_fut = self.upload_files(&outputs);
                 let (logger_result, cache_result, cache_files_result) =
                     join!(logger_fut, cache_write_fut, cache_writefiles_fut);
                 logger_result.unwrap_or_else(|err| {
@@ -160,8 +160,8 @@ impl<'a> Capsule<'a> {
         Ok(exit_status)
     }
 
-    /// Read all output files from the caching backend, and place them into destination paths.
-    async fn read_files(&self, outputs: &OutputHashBundle) -> Result<()> {
+    /// Download all output files from the caching backend, and place them into destination paths.
+    async fn download_files(&self, outputs: &OutputHashBundle) -> Result<()> {
         // First, try removing files that should not be present, and bail out if we fail with that,
         // before starting any S3 downloads.
         for (item, _) in &outputs.hash_details {
@@ -186,7 +186,7 @@ impl<'a> Capsule<'a> {
                     let (file, path) = file.into_parts();
                     let mut file_stream = tokio::fs::File::from_std(file);
                     let download_file_fut = async move {
-                        let mut file_body_reader = self.caching_backend.read_object_file(item_hash).await?;
+                        let mut file_body_reader = self.caching_backend.download_object_file(item_hash).await?;
                         tokio::io::copy(&mut file_body_reader, &mut file_stream).await?;
                         file_stream.flush().await?;
                         path.persist(&fileoutput.filename)?;
@@ -204,15 +204,15 @@ impl<'a> Capsule<'a> {
         Ok(())
     }
 
-    /// Write output files into S3, keyed by their hash (content addressed).
-    async fn write_files(&self, outputs: &OutputHashBundle) -> Result<()> {
+    /// Upload output files into S3, keyed by their hash (content addressed).
+    async fn upload_files(&self, outputs: &OutputHashBundle) -> Result<()> {
         let mut all_files_futures = Vec::new();
         for (item, item_hash) in &outputs.hash_details {
             if let Output::File(ref fileoutput) = item {
                 if fileoutput.present {
                     let tokio_file = tokio::fs::File::open(&fileoutput.filename).await?;
                     let content_length = tokio_file.metadata().await?.len();
-                    all_files_futures.push(self.caching_backend.write_object_file(
+                    all_files_futures.push(self.caching_backend.upload_object_file(
                         item_hash,
                         Box::pin(tokio_file),
                         content_length,
@@ -273,7 +273,7 @@ impl<'a> Capsule<'a> {
             }
 
             if use_cache {
-                match self.read_files(&lookup_result.outputs).await {
+                match self.download_files(&lookup_result.outputs).await {
                     Ok(_) => {
                         println!("Cache hit on {}: success.", self.capsule_id());
                         // Log successful cached results.

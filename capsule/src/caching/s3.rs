@@ -107,7 +107,7 @@ impl CachingBackend for S3Backend {
     }
 
     /// Read a file object from the storage, and return AsyncRead object for consuming by capsule.
-    async fn read_object_file(&self, item_hash: &str) -> Result<Pin<Box<dyn AsyncRead>>> {
+    async fn download_object_file(&self, item_hash: &str) -> Result<Pin<Box<dyn AsyncRead>>> {
         let key = self.normalize_object_key(item_hash);
         let request = GetObjectRequest {
             bucket: self.bucket_objects.clone(),
@@ -119,7 +119,7 @@ impl CachingBackend for S3Backend {
         Ok(Box::pin(body.into_async_read()))
     }
 
-    async fn write_object_file(
+    async fn upload_object_file(
         &self,
         item_hash: &str,
         file: Pin<Box<dyn AsyncRead + Send>>,

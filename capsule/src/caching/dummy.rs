@@ -23,11 +23,11 @@ impl CachingBackend for DummyBackend {
         Ok(None)
     }
 
-    async fn read_object_file(&self, _item_hash: &str) -> Result<Pin<Box<dyn AsyncRead>>> {
-        Err(anyhow!("reading object file in the dummy backend"))
+    async fn download_object_file(&self, _item_hash: &str) -> Result<Pin<Box<dyn AsyncRead>>> {
+        Err(anyhow!("downloading object file in the dummy backend"))
     }
 
-    async fn write_object_file(
+    async fn upload_object_file(
         &self,
         _item_hash: &str,
         _file: Pin<Box<dyn AsyncRead + Send>>,
