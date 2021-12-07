@@ -35,9 +35,13 @@ impl TestBackend {
             ..Default::default()
         }
     }
+    pub fn remove_all(&self) {
+        let mut hashmap = self.keys.write().unwrap();
+        hashmap.clear();
+    }
 
     fn normalize_key(&self, key: &str) -> String {
-        format!("{}/{}", &self.capsule_id, key)
+        format!("{}/{}", self.capsule_id, key)
     }
 }
 

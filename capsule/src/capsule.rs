@@ -547,7 +547,116 @@ mod tests {
 
     #[tokio::test]
     #[serial]
-    async fn test_cache_hit_failed_lookup() {
+    async fn test_cache_miss() {
+        let tmp_dir = TempDir::new().unwrap();
+        let backend = TestBackend::new("wtf", TestBackendConfig::default());
+        let out_file_1 = tmp_dir.path().join("xx");
+        let config = Config::new(
+            [
+                "capsule",
+                "-c",
+                "wtf",
+                "-i",
+                "/bin/echo",
+                "-o",
+                out_file_1.to_str().unwrap(),
+                "--",
+                "/bin/bash",
+                "-c",
+                &format!("echo '123' > {}", out_file_1.to_str().unwrap()),
+            ]
+            .iter(),
+            None,
+            None,
+        )
+        .unwrap();
+        let capsule = Capsule::new(&config, &backend, &Dummy);
+        let mut run_program = false;
+        let code = capsule.run_capsule(&mut run_program).await.unwrap();
+        assert_eq!(code, 0);
+        assert!(run_program);
+
+        std::fs::remove_file(&out_file_1).unwrap();
+
+        backend.remove_all();
+
+        // 2nd should NOT be cached, and command run.
+        let capsule = Capsule::new(&config, &backend, &Dummy);
+        let mut run_program = false;
+        let code = capsule.run_capsule(&mut run_program).await.unwrap();
+        assert_eq!(code, 0);
+        // The 2nd time the program should be run, as there's no cache hit.
+        assert!(run_program);
+
+        assert!(out_file_1.is_file());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_cache_miss_capsule_id() {
+        let tmp_dir = TempDir::new().unwrap();
+        let backend = TestBackend::new("wtf1", TestBackendConfig::default());
+        let out_file_1 = tmp_dir.path().join("xx");
+        let config = Config::new(
+            [
+                "capsule",
+                "-c",
+                "wtf1",
+                "-i",
+                "/bin/echo",
+                "-o",
+                out_file_1.to_str().unwrap(),
+                "--",
+                "/bin/bash",
+                "-c",
+                &format!("echo '123' > {}", out_file_1.to_str().unwrap()),
+            ]
+            .iter(),
+            None,
+            None,
+        )
+        .unwrap();
+        let capsule = Capsule::new(&config, &backend, &Dummy);
+        let mut run_program = false;
+        let code = capsule.run_capsule(&mut run_program).await.unwrap();
+        assert_eq!(code, 0);
+        assert!(run_program);
+
+        std::fs::remove_file(&out_file_1).unwrap();
+
+        let backend = TestBackend::new("wtf2", TestBackendConfig::default());
+        let config = Config::new(
+            [
+                "capsule",
+                "-c",
+                "wtf2", // The only difference is capsule_id, but it should not cache.
+                "-i",
+                "/bin/echo",
+                "-o",
+                out_file_1.to_str().unwrap(),
+                "--",
+                "/bin/bash",
+                "-c",
+                &format!("echo '123' > {}", out_file_1.to_str().unwrap()),
+            ]
+            .iter(),
+            None,
+            None,
+        )
+        .unwrap();
+        let capsule = Capsule::new(&config, &backend, &Dummy);
+        let mut run_program = false;
+        let code = capsule.run_capsule(&mut run_program).await.unwrap();
+        assert_eq!(code, 0);
+        // The 2nd time the program should be run, as there's no cache hit.
+        assert!(run_program);
+
+        assert!(out_file_1.is_file());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_cache_failed_lookup() {
         let backend = TestBackend::new(
             "wtf",
             TestBackendConfig {
@@ -610,8 +719,97 @@ mod tests {
         let mut run_program = false;
         let code = capsule.run_capsule(&mut run_program).await.unwrap();
         assert_eq!(code, 0);
-        // The 2nd time the program should run, because of the download error.
         assert!(run_program);
         assert!(out_file_1.is_file());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_cache_hit_permissions() {
+        let tmp_dir = TempDir::new().unwrap();
+        let backend = TestBackend::new("wtf", TestBackendConfig::default());
+        let out_file = tmp_dir.path().join("xx");
+        let out_file_name = out_file.to_string_lossy();
+        let config = Config::new(
+            [
+                "capsule",
+                "-c",
+                "wtf",
+                "-i",
+                "/bin/echo",
+                "-o",
+                &out_file_name,
+                "--",
+                "/bin/bash",
+                "-c",
+                &format!("echo '123' > {}; chmod 755 {}", out_file_name, out_file_name),
+            ]
+            .iter(),
+            None,
+            None,
+        )
+        .unwrap();
+        let capsule = Capsule::new(&config, &backend, &Dummy);
+        let mut run_program = false;
+        let code = capsule.run_capsule(&mut run_program).await.unwrap();
+        assert_eq!(code, 0);
+        assert!(run_program);
+
+        std::fs::remove_file(&out_file).unwrap();
+
+        let capsule = Capsule::new(&config, &backend, &Dummy);
+        let mut run_program = false;
+        let code = capsule.run_capsule(&mut run_program).await.unwrap();
+        assert_eq!(code, 0);
+        // The 2nd time the program should NOT run.
+        assert!(!run_program);
+        assert!(out_file.is_file());
+        assert_eq!(out_file.metadata().unwrap().permissions().mode() & 0o777, 0o755);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_cache_file_removal() {
+        let tmp_dir = TempDir::new().unwrap();
+        let backend = TestBackend::new("wtf", TestBackendConfig::default());
+        let out_file = tmp_dir.path().join("xx");
+        let out_file_name = out_file.to_string_lossy();
+        let config = Config::new(
+            [
+                "capsule",
+                "-c",
+                "wtf",
+                "-i",
+                "/bin/echo",
+                "-o",
+                &out_file_name,
+                "--",
+                "/bin/echo",
+            ]
+            .iter(),
+            None,
+            None,
+        )
+        .unwrap();
+        let capsule = Capsule::new(&config, &backend, &Dummy);
+        let mut run_program = false;
+        let code = capsule.run_capsule(&mut run_program).await.unwrap();
+        assert_eq!(code, 0);
+        assert!(run_program);
+
+        // Create the file
+        std::fs::File::create(&out_file).unwrap();
+        assert!(out_file.exists());
+
+        let capsule = Capsule::new(&config, &backend, &Dummy);
+        let mut run_program = false;
+        let code = capsule.run_capsule(&mut run_program).await.unwrap();
+        assert_eq!(code, 0);
+        // The 2nd time the program should NOT run.
+        assert!(!run_program);
+
+        // Because the out file was not present when the run was cached, we should expect it
+        // to be removed.
+        assert!(!out_file.exists());
     }
 }
