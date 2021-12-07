@@ -35,6 +35,10 @@ impl TestBackend {
             ..Default::default()
         }
     }
+
+    fn normalize_key(&self, key: &str) -> String {
+        format!("{}/{}", &self.capsule_id, key)
+    }
 }
 
 #[async_trait]
@@ -47,8 +51,9 @@ impl CachingBackend for TestBackend {
         if self.test_config.failing_lookup {
             Err(anyhow!("Failed to lookup key"))
         } else {
+            let key = self.normalize_key(&inputs.hash);
             let hashmap = self.keys.read().unwrap();
-            Ok(hashmap.get(&inputs.hash).cloned())
+            Ok(hashmap.get(&key).cloned())
         }
     }
 
@@ -56,9 +61,10 @@ impl CachingBackend for TestBackend {
         if self.test_config.failing_write {
             Err(anyhow!("Failed to write key"))
         } else {
+            let key = self.normalize_key(&inputs.hash);
             let mut hashmap = self.keys.write().unwrap();
             hashmap.insert(
-                inputs.hash.clone(),
+                key,
                 InputOutputBundle {
                     inputs: inputs.clone(),
                     outputs: outputs.clone(),
