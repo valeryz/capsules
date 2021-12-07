@@ -9,7 +9,8 @@ use std::io::ErrorKind;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::prelude::ExitStatusExt;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, ExitStatus};
+use std::process::ExitStatus;
+use tokio::process::{Command, Child};
 use tempfile::NamedTempFile;
 use tokio::io::AsyncWriteExt;
 
@@ -111,12 +112,12 @@ impl<'a> Capsule<'a> {
         program_run: &mut bool,
     ) -> Result<ExitStatus> {
         eprintln!("Executing command: {:?}", self.config.command_to_run);
-        let mut child = self.execute_command()?;
+        let mut child = self.execute_command().await?;
         // Having executed the command, just need to tell our caller
         // whether we succeeded in running the program.  this happens
         // as soon as we have a child program.
         *program_run = true;
-        let exit_status = child.wait().with_context(|| "Waiting for child")?;
+        let exit_status = child.wait().await.with_context(|| "Waiting for child")?;
 
         // Now that we got the exit code, we try hard to pass it back to exit.
         // If we fail along the way, we should complain, but still continue.
@@ -302,7 +303,7 @@ impl<'a> Capsule<'a> {
             .map(|exit_status| exit_status.into_raw())
     }
 
-    pub fn execute_command(&self) -> Result<Child> {
+    async fn execute_command(&self) -> Result<Child> {
         if self.config.command_to_run.is_empty() {
             Err(anyhow!(USAGE))
         } else {
