@@ -1,14 +1,14 @@
 use anyhow::anyhow;
 use anyhow::{Context, Result};
 
-use futures::{future::try_join_all};
+use futures::future::try_join_all;
 use glob::glob;
 use indoc::indoc;
+use std::io::ErrorKind;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::prelude::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus};
-use std::io::ErrorKind;
 use tempfile::NamedTempFile;
 use tokio::io::AsyncWriteExt;
 
@@ -140,7 +140,7 @@ impl<'a> Capsule<'a> {
 
                 let logger_fut = self.logger.log(inputs, &outputs, false, non_determinism);
                 let cache_write_fut = self.caching_backend.write(inputs, &outputs);
-                let cache_writefiles_fut = self.caching_backend.write_files(&outputs);
+                let cache_writefiles_fut = self.write_files(&outputs);
                 let (logger_result, cache_result, cache_files_result) =
                     join!(logger_fut, cache_write_fut, cache_writefiles_fut);
                 logger_result.unwrap_or_else(|err| {
@@ -191,12 +191,32 @@ impl<'a> Capsule<'a> {
                         file_stream.flush().await?;
                         path.persist(&fileoutput.filename)?;
                         std::fs::set_permissions(
-                                &fileoutput.filename,
-                                std::fs::Permissions::from_mode(fileoutput.mode),
+                            &fileoutput.filename,
+                            std::fs::Permissions::from_mode(fileoutput.mode),
                         )?;
                         Ok::<(), anyhow::Error>(())
                     };
                     all_files_futures.push(download_file_fut);
+                }
+            }
+        }
+        try_join_all(all_files_futures).await?;
+        Ok(())
+    }
+
+    /// Write output files into S3, keyed by their hash (content addressed).
+    async fn write_files(&self, outputs: &OutputHashBundle) -> Result<()> {
+        let mut all_files_futures = Vec::new();
+        for (item, item_hash) in &outputs.hash_details {
+            if let Output::File(ref fileoutput) = item {
+                if fileoutput.present {
+                    let tokio_file = tokio::fs::File::open(&fileoutput.filename).await?;
+                    let content_length = tokio_file.metadata().await?.len();
+                    all_files_futures.push(self.caching_backend.write_object_file(
+                        item_hash,
+                        Box::pin(tokio_file),
+                        content_length,
+                    ));
                 }
             }
         }

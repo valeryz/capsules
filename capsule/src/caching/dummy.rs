@@ -1,8 +1,8 @@
+use anyhow::{anyhow, Result};
 use crate::caching::backend::CachingBackend;
-use anyhow::Result;
 use async_trait::async_trait;
-use tokio::io::AsyncRead;
 use std::pin::Pin;
+use tokio::io::AsyncRead;
 
 use crate::iohashing::{InputHashBundle, InputOutputBundle, OutputHashBundle};
 
@@ -24,7 +24,16 @@ impl CachingBackend for DummyBackend {
     }
 
     async fn read_object_file(&self, _item_hash: &str) -> Result<Pin<Box<dyn AsyncRead>>> {
-        Ok(Box::pin(tokio::io::empty()))
+        Err(anyhow!("reading object file in the dummy backend"))
+    }
+
+    async fn write_object_file(
+        &self,
+        _item_hash: &str,
+        _file: Pin<Box<dyn AsyncRead + Send>>,
+        _content_length: u64,
+    ) -> Result<()> {
+        Ok(())
     }
 
     async fn write(&self, inputs: &InputHashBundle, outputs: &OutputHashBundle) -> Result<()> {
@@ -36,10 +45,6 @@ impl CachingBackend for DummyBackend {
             println!("  Capsule Inputs hashes: {:?}", inputs.hash_details);
             println!("  Capsule Outputs hashes: {:?}", outputs.hash_details);
         }
-        Ok(())
-    }
-
-    async fn write_files(&self, _outputs: &OutputHashBundle) -> Result<()> {
         Ok(())
     }
 }

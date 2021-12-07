@@ -1,19 +1,18 @@
 use anyhow::anyhow;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
-use futures::{future::try_join_all, TryStreamExt};
+use futures::TryStreamExt;
 use hyperx::header::CacheDirective;
 use rusoto_core::region::Region;
 use rusoto_s3::{GetObjectRequest, PutObjectRequest, S3Client, S3 as _};
 use serde_cbor;
-use tokio::fs as tokio_fs;
+use std::pin::Pin;
 use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio_util::codec;
-use std::pin::Pin;
 
 use crate::caching::backend::CachingBackend;
 use crate::config::Config;
-use crate::iohashing::{InputHashBundle, InputOutputBundle, Output, OutputHashBundle};
+use crate::iohashing::{InputHashBundle, InputOutputBundle, OutputHashBundle};
 
 pub struct S3Backend {
     /// S3 bucket for keys
@@ -120,6 +119,27 @@ impl CachingBackend for S3Backend {
         Ok(Box::pin(body.into_async_read()))
     }
 
+    async fn write_object_file(
+        &self,
+        item_hash: &str,
+        file: Pin<Box<dyn AsyncRead + Send>>,
+        content_length: u64,
+    ) -> Result<()> {
+        let byte_stream = codec::FramedRead::new(file, codec::BytesCodec::new()).map_ok(|r| r.freeze());
+        let request = PutObjectRequest {
+            bucket: self.bucket_objects.clone(),
+            key: self.normalize_object_key(item_hash),
+            body: Some(rusoto_core::ByteStream::new(byte_stream)),
+            content_length: Some(content_length as i64),
+            // Two weeks
+            cache_control: Some(CacheDirective::MaxAge(2_592_000).to_string()),
+            content_type: Some("application/octet-stream".to_owned()),
+            ..Default::default()
+        };
+        self.client.put_object(request).await?;
+        Ok(())
+    }
+
     /// Write hashes of inputs and outputs into S3, keyed by hashes of inputs.
     async fn write(&self, inputs: &InputHashBundle, outputs: &OutputHashBundle) -> Result<()> {
         let io_bundle = InputOutputBundle {
@@ -143,36 +163,6 @@ impl CachingBackend for S3Backend {
 
         // Write data to S3 (asynchronously).
         self.client.put_object(request).await?;
-        Ok(())
-    }
-
-    /// Write output files into S3, keyed by their hash (content addressed).
-    async fn write_files(&self, outputs: &OutputHashBundle) -> Result<()> {
-        let mut all_files_futures = Vec::new();
-        for (item, item_hash) in &outputs.hash_details {
-            if let Output::File(ref fileoutput) = item {
-                if fileoutput.present {
-                    let tokio_file = tokio_fs::File::open(&fileoutput.filename).await?;
-                    let content_length = tokio_file.metadata().await?.len();
-                    let byte_stream =
-                        codec::FramedRead::new(tokio_file, codec::BytesCodec::new()).map_ok(|r| r.freeze());
-
-                    let request = PutObjectRequest {
-                        bucket: self.bucket_objects.clone(),
-                        key: self.normalize_object_key(item_hash),
-                        body: Some(rusoto_core::ByteStream::new(byte_stream)),
-                        content_length: Some(content_length as i64),
-                        // Two weeks
-                        cache_control: Some(CacheDirective::MaxAge(2_592_000).to_string()),
-                        content_type: Some("application/octet-stream".to_owned()),
-                        ..Default::default()
-                    };
-                    let put_future = self.client.put_object(request);
-                    all_files_futures.push(put_future);
-                }
-            }
-        }
-        try_join_all(all_files_futures).await?;
         Ok(())
     }
 }
