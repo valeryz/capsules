@@ -23,6 +23,8 @@ pub trait CachingBackend {
     /// that allows the caller to keep asynchrnously fetching the content.
     async fn download_object_file(&self, item_hash: &str) -> Result<Pin<Box<dyn AsyncRead>>>;
 
+    /// Upload a file addressed by item_hash to the backend storage. The file is represented by an
+    /// AsyncRead handle that allows us to keep reading the file during the async upload.
     async fn upload_object_file(
         &self,
         item_hash: &str,
