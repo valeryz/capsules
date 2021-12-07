@@ -4,9 +4,8 @@ use anyhow::Result;
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::pin::Pin;
-use std::cell::RefCell;
 use std::sync::{Arc, RwLock};
-use tokio::io::AsyncRead;
+use tokio::io::{AsyncRead, AsyncReadExt};
 
 use crate::iohashing::{InputHashBundle, InputOutputBundle, OutputHashBundle};
 
@@ -18,10 +17,12 @@ pub struct TestBackendConfig {
     pub failing_upload_files: bool,
 }
 
+// We have to use Arc<RwLock<_>> for internal mutability here because
+// async functions require the whole struct to be Send.
 #[derive(Default)]
 pub struct TestBackend {
     keys: Arc<RwLock<HashMap<String, InputOutputBundle>>>,
-    objects: Arc<RwLock<HashMap<String, InputOutputBundle>>>,
+    objects: Arc<RwLock<HashMap<String, Vec<u8>>>>,
     test_config: TestBackendConfig,
 }
 
@@ -32,14 +33,6 @@ impl TestBackend {
             ..Default::default()
         }
     }
-
-    fn get(&self, key: &str) -> Result<Option<InputOutputBundle>> {
-        Ok(None)
-    }
-
-    fn put(&self, key: &str, value: InputOutputBundle) {
-    }
-        
 }
 
 #[async_trait]
@@ -74,15 +67,25 @@ impl CachingBackend for TestBackend {
     }
 
     async fn download_object_file(&self, item_hash: &str) -> Result<Pin<Box<dyn AsyncRead>>> {
-        Ok(Box::pin(tokio::io::empty()))
+        if self.test_config.failing_download_files {
+            Err(anyhow!("Failed to download file"))
+        } else {
+            let hashmap = self.objects.read().unwrap();
+            let object = hashmap.get(item_hash).ok_or_else(|| anyhow!("file not found"))?;
+            Ok(Box::pin(std::io::Cursor::new(object.clone())))
+        }
     }
 
     async fn upload_object_file(
         &self,
-        item_hash: &str,
-        file: Pin<Box<dyn AsyncRead + Send>>,
-        content_length: u64,
+        key: &str,
+        mut file: Pin<Box<dyn AsyncRead + Send>>,
+        _content_length: u64,
     ) -> Result<()> {
+        let mut buf = Vec::new();
+        file.read_to_end(&mut buf).await?;
+        let mut hashmap = self.objects.write().unwrap();
+        hashmap.insert(key.to_string(), buf);
         Ok(())
     }
 }
