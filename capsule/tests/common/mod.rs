@@ -12,6 +12,11 @@ use std::{thread, time};
 use nix::unistd;
 use rand::Rng;
 
+use rusoto_core::region::Region;
+use rusoto_s3::{DeleteBucketRequest, S3Client, S3 as _};
+
+use tokio::runtime::Runtime;
+
 use tempfile::{self, TempDir};
 
 pub const MINIO_PORT_RANGE: (u16, u16) = (30000, 55000);
@@ -130,4 +135,19 @@ pub fn capsule(port: u16, args: &[&str]) {
     io::stdout().write_all(&output.stdout).unwrap();
     io::stderr().write_all(&output.stderr).unwrap();
     assert!(output.status.success());
+}
+
+pub fn remove_bucket(port: u16, bucket: &str) {
+    let req = DeleteBucketRequest {
+        bucket: bucket.to_string(),
+        expected_bucket_owner: None
+    };
+    let client = S3Client::new(Region::Custom {
+        name: "eu-central-1".to_string(),
+        endpoint: format!("http://127.0.0.1:{}", port) });
+
+    let rt = Runtime::new().unwrap();
+    rt.block_on(async move {
+        let _ = client.delete_bucket(req);
+    });
 }
