@@ -1,6 +1,7 @@
 use anyhow::anyhow;
 use anyhow::{Context, Result};
 
+use futures::join;
 use futures::future::try_join_all;
 use glob::glob;
 use indoc::indoc;
@@ -12,7 +13,6 @@ use std::process::{Child, Command, ExitStatus};
 use tempfile::NamedTempFile;
 use tokio::io::AsyncWriteExt;
 
-use futures::join;
 
 use crate::caching::backend::CachingBackend;
 use crate::config::{Config, Milestone};
