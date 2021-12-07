@@ -24,12 +24,14 @@ pub struct TestBackend {
     keys: Arc<RwLock<HashMap<String, InputOutputBundle>>>,
     objects: Arc<RwLock<HashMap<String, Vec<u8>>>>,
     test_config: TestBackendConfig,
+    capsule_id: String,
 }
 
 impl TestBackend {
-    fn new(test_config: TestBackendConfig) -> Self {
+    pub fn new(capsule_id: &str, test_config: TestBackendConfig) -> Self {
         Self {
             test_config,
+            capsule_id: capsule_id.to_string(),
             ..Default::default()
         }
     }
@@ -51,7 +53,7 @@ impl CachingBackend for TestBackend {
     }
 
     async fn write(&self, inputs: &InputHashBundle, outputs: &OutputHashBundle) -> Result<()> {
-        if self.test_config.failing_download_files {
+        if self.test_config.failing_write {
             Err(anyhow!("Failed to write key"))
         } else {
             let mut hashmap = self.keys.write().unwrap();
@@ -82,10 +84,14 @@ impl CachingBackend for TestBackend {
         mut file: Pin<Box<dyn AsyncRead + Send>>,
         _content_length: u64,
     ) -> Result<()> {
-        let mut buf = Vec::new();
-        file.read_to_end(&mut buf).await?;
-        let mut hashmap = self.objects.write().unwrap();
-        hashmap.insert(key.to_string(), buf);
-        Ok(())
+        if self.test_config.failing_upload_files {
+            Err(anyhow!("Failed to upload object file"))
+        } else {
+            let mut buf = Vec::new();
+            file.read_to_end(&mut buf).await?;
+            let mut hashmap = self.objects.write().unwrap();
+            hashmap.insert(key.to_string(), buf);
+            Ok(())
+        }
     }
 }

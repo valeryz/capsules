@@ -12,24 +12,6 @@ use std::env;
 use std::path::Path;
 use std::process;
 
-fn create_capsule(config: &Config) -> Result<Capsule<'_>> {
-    // First, instantiate our caching backend (S3, Dummy, or possibly other in the future).
-    let backend: Box<dyn CachingBackend> = match config.backend {
-        Backend::Dummy => Box::new(dummy::DummyBackend {
-            verbose_output: config.verbose,
-            capsule_id: config.capsule_id.as_ref().cloned().unwrap(),
-        }),
-        Backend::S3 => Box::new(s3::S3Backend::from_config(config)?),
-    };
-    // Instantiate our logger (for observability)
-    let logger: Box<dyn Logger> = if config.honeycomb_dataset.is_some() {
-        Box::new(honeycomb::Honeycomb::from_config(config)?)
-    } else {
-        Box::new(DummyLogger)
-    };
-    // Create the capsule with the caching backend and logger.
-    Ok(Capsule::new(config, backend, logger))
-}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -39,7 +21,22 @@ async fn main() -> Result<()> {
         default_toml.as_ref().map(Path::new),
         Some(Path::new("Capsule.toml")),
     )?;
-    let capsule = create_capsule(&config)?;
+    // First, instantiate our caching backend (S3, Dummy, or possibly other in the future).
+    let backend: Box<dyn CachingBackend> = match config.backend {
+        Backend::Dummy => Box::new(dummy::DummyBackend {
+            verbose_output: config.verbose,
+            capsule_id: config.capsule_id.as_ref().cloned().unwrap(),
+        }),
+        Backend::S3 => Box::new(s3::S3Backend::from_config(&config)?),
+    };
+    // Instantiate our logger (for observability)
+    let logger: Box<dyn Logger> = if config.honeycomb_dataset.is_some() {
+        Box::new(honeycomb::Honeycomb::from_config(&config)?)
+    } else {
+        Box::new(DummyLogger)
+    };
+
+    let capsule = Capsule::new(&config, backend.as_ref(), logger.as_ref());
 
     // Running of the capsule may fail. It may fail either before the wrapped program
     // was run, or after. This flag says whether the program was actually run.

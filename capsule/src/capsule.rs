@@ -1,8 +1,8 @@
 use anyhow::anyhow;
 use anyhow::{Context, Result};
 
-use futures::join;
 use futures::future::try_join_all;
+use futures::join;
 use glob::glob;
 use indoc::indoc;
 use std::io::ErrorKind;
@@ -10,10 +10,9 @@ use std::os::unix::fs::PermissionsExt;
 use std::os::unix::prelude::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
-use tokio::process::{Command, Child};
 use tempfile::NamedTempFile;
 use tokio::io::AsyncWriteExt;
-
+use tokio::process::{Child, Command};
 
 use crate::caching::backend::CachingBackend;
 use crate::config::{Config, Milestone};
@@ -27,12 +26,12 @@ pub struct Capsule<'a> {
     pub program_run: bool,
 
     config: &'a Config,
-    caching_backend: Box<dyn CachingBackend>,
-    logger: Box<dyn Logger>,
+    caching_backend: &'a dyn CachingBackend,
+    logger: &'a dyn Logger,
 }
 
 impl<'a> Capsule<'a> {
-    pub fn new(config: &'a Config, caching_backend: Box<dyn CachingBackend>, logger: Box<dyn Logger>) -> Self {
+    pub fn new(config: &'a Config, caching_backend: &'a dyn CachingBackend, logger: &'a dyn Logger) -> Self {
         Self {
             program_run: false,
             config,
@@ -325,6 +324,7 @@ mod tests {
 
     use super::*;
     use crate::caching::dummy;
+    use crate::caching::test::{TestBackend, TestBackendConfig};
     use crate::observability::dummy::Dummy;
     use serial_test::serial;
     use tempfile::TempDir;
@@ -334,37 +334,37 @@ mod tests {
     #[test]
     #[serial]
     fn test_empty_capsule() {
-        let backend = Box::new(dummy::DummyBackend::default());
+        let backend = dummy::DummyBackend::default();
         let config = Config::new(["capsule", "-c", "wtf", "--", "/bin/echo"].iter(), None, None).unwrap();
-        let capsule = Capsule::new(&config, backend, Box::new(Dummy));
+        let capsule = Capsule::new(&config, &backend, &Dummy);
         assert_eq!(capsule.read_inputs().unwrap().hash, EMPTY_SHA256);
     }
 
     #[test]
     #[serial]
     fn test_nonexistent_glob() {
-        let backend = Box::new(dummy::DummyBackend::default());
+        let backend = dummy::DummyBackend::default();
         let config = Config::new(
             ["capsule", "-c", "wtf", "-i", "/nonexistent-glob", "--", "/bin/echo"].iter(),
             None,
             None,
         )
         .unwrap();
-        let capsule = Capsule::new(&config, backend, Box::new(Dummy));
+        let capsule = Capsule::new(&config, &backend, &Dummy);
         assert!(capsule.read_inputs().is_ok());
     }
 
     #[test]
     #[serial]
     fn test_ok_glob() {
-        let backend = Box::new(dummy::DummyBackend::default());
+        let backend = dummy::DummyBackend::default();
         let config = Config::new(
             ["capsule", "-c", "wtf", "-i", "/bin/echo", "--", "/bin/echo"].iter(),
             None,
             None,
         )
         .unwrap();
-        let capsule = Capsule::new(&config, backend, Box::new(Dummy));
+        let capsule = Capsule::new(&config, &backend, &Dummy);
         let inputs = capsule.read_inputs();
         assert!(inputs.is_ok());
         assert!(inputs.unwrap().hash_details[0].0 == Input::File(Path::new("/bin/echo").into()));
@@ -373,14 +373,14 @@ mod tests {
     #[test]
     #[serial]
     fn test_invalid_glob() {
-        let backend = Box::new(dummy::DummyBackend::default());
+        let backend = dummy::DummyBackend::default();
         let config = Config::new(
             ["capsule", "-c", "wtf", "-i", "***", "--", "/bin/echo"].iter(),
             None,
             None,
         )
         .unwrap();
-        let capsule = Capsule::new(&config, backend, Box::new(Dummy));
+        let capsule = Capsule::new(&config, &backend, &Dummy);
         assert!(capsule.read_inputs().is_err());
     }
 
@@ -401,7 +401,7 @@ mod tests {
     fn test_recursive_glob() {
         let tmp_dir = TempDir::new().unwrap();
         let root = create_file_tree(tmp_dir.path());
-        let backend = Box::new(dummy::DummyBackend::default());
+        let backend = dummy::DummyBackend::default();
         let config = Config::new(
             [
                 "capsule",
@@ -417,7 +417,7 @@ mod tests {
             None,
         )
         .unwrap();
-        let capsule = Capsule::new(&config, backend, Box::new(Dummy));
+        let capsule = Capsule::new(&config, &backend, &Dummy);
         let inputs = capsule.read_inputs();
         assert!(inputs.is_ok());
         let inputs = inputs.unwrap();
@@ -436,7 +436,7 @@ mod tests {
     fn test_single_glob() {
         let tmp_dir = TempDir::new().unwrap();
         let root = create_file_tree(tmp_dir.path());
-        let backend = Box::new(dummy::DummyBackend::default());
+        let backend = dummy::DummyBackend::default();
         let config = Config::new(
             [
                 "capsule",
@@ -452,7 +452,7 @@ mod tests {
             None,
         )
         .unwrap();
-        let capsule = Capsule::new(&config, backend, Box::new(Dummy));
+        let capsule = Capsule::new(&config, &backend, &Dummy);
         let inputs = capsule.read_inputs();
         assert!(inputs.is_ok());
         assert_eq!(
@@ -466,7 +466,7 @@ mod tests {
     fn test_full_recursive_glob() {
         let tmp_dir = TempDir::new().unwrap();
         let root = create_file_tree(tmp_dir.path());
-        let backend = Box::new(dummy::DummyBackend::default());
+        let backend = dummy::DummyBackend::default();
         let config = Config::new(
             [
                 "capsule",
@@ -482,7 +482,7 @@ mod tests {
             None,
         )
         .unwrap();
-        let capsule = Capsule::new(&config, backend, Box::new(Dummy));
+        let capsule = Capsule::new(&config, &backend, &Dummy);
         let inputs = capsule.read_inputs();
         assert_eq!(
             inputs
@@ -499,5 +499,119 @@ mod tests {
                 Input::File(root.join("dir2").join("subdir2").join("222").into())
             ]
         );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_cache_hit() {
+        let tmp_dir = TempDir::new().unwrap();
+        let backend = TestBackend::new("wtf", TestBackendConfig::default());
+        let out_file_1 = tmp_dir.path().join("xx");
+        let config = Config::new(
+            [
+                "capsule",
+                "-c",
+                "wtf",
+                "-i",
+                "/bin/echo",
+                "-o",
+                out_file_1.to_str().unwrap(),
+                "--",
+                "/bin/bash",
+                "-c",
+                &format!("echo '123' > {}", out_file_1.to_str().unwrap()),
+            ]
+            .iter(),
+            None,
+            None,
+        )
+        .unwrap();
+        let capsule = Capsule::new(&config, &backend, &Dummy);
+        let mut run_program = false;
+        let code = capsule.run_capsule(&mut run_program).await.unwrap();
+        assert_eq!(code, 0);
+        assert!(run_program);
+
+        std::fs::remove_file(&out_file_1).unwrap();
+
+        // 2nd should be cached, and command not run.
+        let capsule = Capsule::new(&config, &backend, &Dummy);
+        let mut run_program = false;
+        let code = capsule.run_capsule(&mut run_program).await.unwrap();
+        assert_eq!(code, 0);
+        // The 2nd time the program should not be run.
+        assert!(!run_program);
+
+        assert!(out_file_1.is_file());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_cache_hit_failed_lookup() {
+        let backend = TestBackend::new(
+            "wtf",
+            TestBackendConfig {
+                failing_lookup: true,
+                ..Default::default()
+            },
+        );
+        let config = Config::new(
+            ["capsule", "-c", "wtf", "-i", "/bin/echo", "--", "/bin/echo"].iter(),
+            None,
+            None,
+        )
+        .unwrap();
+        let capsule = Capsule::new(&config, &backend, &Dummy);
+        let mut run_program = false;
+        let code = capsule.run_capsule(&mut run_program).await;
+        assert!(code.is_err());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_cache_hit_failure_object() {
+        let tmp_dir = TempDir::new().unwrap();
+        let backend = TestBackend::new(
+            "wtf",
+            TestBackendConfig {
+                failing_download_files: true,
+                ..Default::default()
+            },
+        );
+        let out_file_1 = tmp_dir.path().join("xx");
+        let config = Config::new(
+            [
+                "capsule",
+                "-c",
+                "wtf",
+                "-i",
+                "/bin/echo",
+                "-o",
+                out_file_1.to_str().unwrap(),
+                "--",
+                "/bin/bash",
+                "-c",
+                &format!("echo '123' > {}", out_file_1.to_str().unwrap()),
+            ]
+            .iter(),
+            None,
+            None,
+        )
+        .unwrap();
+        let capsule = Capsule::new(&config, &backend, &Dummy);
+        let mut run_program = false;
+        let code = capsule.run_capsule(&mut run_program).await.unwrap();
+        assert_eq!(code, 0);
+        assert!(run_program);
+
+        std::fs::remove_file(&out_file_1).unwrap();
+
+        let capsule = Capsule::new(&config, &backend, &Dummy);
+        let mut run_program = false;
+        let code = capsule.run_capsule(&mut run_program).await.unwrap();
+        assert_eq!(code, 0);
+        // The 2nd time the program should run, because of the download error.
+        assert!(run_program);
+        assert!(out_file_1.is_file());
     }
 }
