@@ -28,6 +28,7 @@ rusoto_core = "0.47.0"
 rusoto_s3 = "0.47.0"
 hyperx = "1.4.0"
 futures = "0.3.18"
+shell-words = "1.0.0"
 
 [dev-dependencies]
 serial_test = "0.5.1"

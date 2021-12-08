@@ -262,36 +262,34 @@ impl Config {
             )
             .arg(Arg::new("command_to_run").last(true));
 
-        // Look at the first element of command line, to find and remember
-        // argv[0].
-        let mut cmdline_args_iter = cmdline_args.into_iter();
-        let argv0 = cmdline_args_iter.next().context("No argv0")?;
-        // If we explicitly name our program placebo, it will act as
-        // such, otherwise we move to Blue Pill milestone.
-        let match_sources = [
-            // First we look at the environment variable CAPSULE_ARGS,
-            // which has the default args, not listed on command line.
-            arg_matches.clone().get_matches_from(itertools::chain(
-                ["capsule"],
-                env::var("CAPSULE_ARGS").unwrap_or_default().split_whitespace(),
-            )),
-            // Then we look at the actual command line args.
-            arg_matches
-                .clone()
-                .get_matches_from(itertools::chain([argv0.clone()], cmdline_args_iter)),
-        ];
+        // Look at the first element of command line, to find and remember argv[0].
 
-        let argv0: OsString = argv0.into();
-        if PathBuf::from(argv0).ends_with("placebo") {
+        // If we explicitly name our program placebo, it will act as such, otherwise we move to Blue
+        // Pill milestone.
+        let cmdline_args: Vec<OsString> = cmdline_args.into_iter().map(Into::into).collect();
+        if cmdline_args.len() < 1 {
+            return Err(anyhow!("No argv0"));
+        }
+
+        let capsule_args: Vec<OsString> = shell_words::split(&env::var("CAPSULE_ARGS").unwrap_or_default())
+            .context("failed to parse CAPSULE_ARGS")?
+            .into_iter()
+            .map(Into::into)
+            .collect();
+
+        let matches = arg_matches.get_matches_from(itertools::chain(
+            &cmdline_args[..1],
+            itertools::chain(&capsule_args[..], &cmdline_args[1..]),
+        ));
+
+        if PathBuf::from(cmdline_args[0].clone()).ends_with("placebo") {
             config.milestone = Milestone::Placebo;
         } else {
             config.milestone = Milestone::BluePill;
         }
 
-        for matches in &match_sources {
-            if let Some(capsule_id) = matches.value_of("capsule_id") {
-                config.capsule_id = Some(capsule_id.to_owned());
-            }
+        if let Some(capsule_id) = matches.value_of("capsule_id") {
+            config.capsule_id = Some(capsule_id.to_owned());
         }
 
         // If there's only one entry in Capsules.toml, it is implied,
@@ -313,66 +311,64 @@ impl Config {
             config.merge(&mut single_config);
         }
 
-        config.backend = Backend::Dummy;
-        for matches in match_sources {
-            if let Some(inputs) = matches.values_of("input") {
-                config.input_files.extend(inputs.map(|x| x.to_owned()));
-            }
-            if let Some(tools) = matches.values_of("tool") {
-                config.tool_tags.extend(tools.map(|x| x.to_owned()));
-            }
-            if let Some(outputs) = matches.values_of("output") {
-                config.output_files.extend(outputs.map(|x| x.to_owned()));
-            }
-            if matches.is_present("stdout") {
-                config.capture_stdout = Some(true);
-            }
-            if matches.is_present("stderr") {
-                config.capture_stderr = Some(true);
-            }
-            if matches.is_present("verbose") {
-                config.verbose = true;
-            }
-            if matches.is_present("cache_failure") {
-                config.cache_failure = true;
-            }
-            if let Some(command) = matches.values_of("command_to_run") {
-                config.command_to_run = command.map(|x| x.to_owned()).collect();
-            }
-            if let Some(backend) = matches.value_of("backend") {
-                if backend == "s3" {
-                    config.backend = Backend::S3;
-                }
-            }
-            if let Some(value) = matches.value_of("honeycomb_dataset") {
-                config.honeycomb_dataset = Some(value.into());
-            }
-            if let Some(value) = matches.value_of("honeycomb_token") {
-                config.honeycomb_token = Some(value.into());
-            }
-            if let Some(value) = matches.value_of("honeycomb_trace_id") {
-                config.honeycomb_trace_id = Some(value.into());
-            }
-            if let Some(value) = matches.value_of("honeycomb_parent_id") {
-                config.honeycomb_parent_id = Some(value.into());
-            }
-            if let Some(values) = matches.values_of("honeycomb_kv") {
-                config.honeycomb_kv.extend(values.map(|x| x.to_owned()));
-            }
-            if let Some(value) = matches.value_of("s3_bucket") {
-                config.s3_bucket = Some(value.into());
-            }
-            if let Some(value) = matches.value_of("s3_bucket_objects") {
-                config.s3_bucket_objects = Some(value.into());
-            }
-            if let Some(value) = matches.value_of("s3_region") {
-                config.s3_region = Some(value.into());
-            }
-            if let Some(value) = matches.value_of("s3_endpoint") {
-                config.s3_endpoint = Some(value.into());
+        config.backend = Backend::Dummy; // default caching backend.
+
+        if let Some(inputs) = matches.values_of("input") {
+            config.input_files.extend(inputs.map(|x| x.to_owned()));
+        }
+        if let Some(tools) = matches.values_of("tool") {
+            config.tool_tags.extend(tools.map(|x| x.to_owned()));
+        }
+        if let Some(outputs) = matches.values_of("output") {
+            config.output_files.extend(outputs.map(|x| x.to_owned()));
+        }
+        if matches.is_present("stdout") {
+            config.capture_stdout = Some(true);
+        }
+        if matches.is_present("stderr") {
+            config.capture_stderr = Some(true);
+        }
+        if matches.is_present("verbose") {
+            config.verbose = true;
+        }
+        if matches.is_present("cache_failure") {
+            config.cache_failure = true;
+        }
+        if let Some(command) = matches.values_of("command_to_run") {
+            config.command_to_run = command.map(|x| x.to_owned()).collect();
+        }
+        if let Some(backend) = matches.value_of("backend") {
+            if backend == "s3" {
+                config.backend = Backend::S3;
             }
         }
-
+        if let Some(value) = matches.value_of("honeycomb_dataset") {
+            config.honeycomb_dataset = Some(value.into());
+        }
+        if let Some(value) = matches.value_of("honeycomb_token") {
+            config.honeycomb_token = Some(value.into());
+        }
+        if let Some(value) = matches.value_of("honeycomb_trace_id") {
+            config.honeycomb_trace_id = Some(value.into());
+        }
+        if let Some(value) = matches.value_of("honeycomb_parent_id") {
+            config.honeycomb_parent_id = Some(value.into());
+        }
+        if let Some(values) = matches.values_of("honeycomb_kv") {
+            config.honeycomb_kv.extend(values.map(|x| x.to_owned()));
+        }
+        if let Some(value) = matches.value_of("s3_bucket") {
+            config.s3_bucket = Some(value.into());
+        }
+        if let Some(value) = matches.value_of("s3_bucket_objects") {
+            config.s3_bucket_objects = Some(value.into());
+        }
+        if let Some(value) = matches.value_of("s3_region") {
+            config.s3_region = Some(value.into());
+        }
+        if let Some(value) = matches.value_of("s3_endpoint") {
+            config.s3_endpoint = Some(value.into());
+        }
         if config.command_to_run.is_empty() {
             bail!("The command to run was not specified");
         }
@@ -430,6 +426,17 @@ mod tests {
         env::remove_var("CAPSULE_ARGS");
         let config = config.unwrap();
         assert_eq!(config.capsule_id.unwrap(), "my_capsule");
+        assert_eq!(config.command_to_run[0], "/bin/echo");
+    }
+
+    #[test]
+    #[serial]
+    fn test_capsule_args_with_space() {
+        env::set_var("CAPSULE_ARGS", "-c 'my capsule id' -- /bin/echo");
+        let config = Config::new(["capsule"], None, None);
+        env::remove_var("CAPSULE_ARGS");
+        let config = config.unwrap();
+        assert_eq!(config.capsule_id.unwrap(), "my capsule id");
         assert_eq!(config.command_to_run[0], "/bin/echo");
     }
 
