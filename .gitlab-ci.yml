@@ -7,7 +7,7 @@ build-test-debug-stable:
   stage: build
   image: registry.gitlab.com/dfinity-lab/open/capsules/rust-minio:latest
   tags:
-    - dfinity
+    - shared
   allow_failure: true  # As of 11/2021, we build on nightly. On Jan 13, we can switch to stable.
   script: |
     set -eux
