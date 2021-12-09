@@ -143,7 +143,7 @@ impl Config {
             .version(env!("CARGO_PKG_VERSION"))
             .arg(
                 Arg::new("capsule_id")
-                    .about("The ID of the capsule (usually a target path)")
+                    .help("The ID of the capsule (usually a target path)")
                     .short('c')
                     .long("capsule_id")
                     .takes_value(true)
@@ -151,7 +151,7 @@ impl Config {
             )
             .arg(
                 Arg::new("input")
-                    .about("Input file")
+                    .help("Input file")
                     .short('i')
                     .long("input")
                     .takes_value(true)
@@ -159,7 +159,7 @@ impl Config {
             )
             .arg(
                 Arg::new("tool")
-                    .about("Tool string (usually with a version)")
+                    .help("Tool string (usually with a version)")
                     .short('t')
                     .long("tool")
                     .takes_value(true)
@@ -167,7 +167,7 @@ impl Config {
             )
             .arg(
                 Arg::new("output")
-                    .about("Output file")
+                    .help("Output file")
                     .short('o')
                     .long("output")
                     .takes_value(true)
@@ -175,26 +175,26 @@ impl Config {
             )
             .arg(
                 Arg::new("stdout")
-                    .about("Capture stdout with the cached bundle")
+                    .help("Capture stdout with the cached bundle")
                     .long("stdout")
                     .takes_value(false),
             )
             .arg(
                 Arg::new("stderr")
-                    .about("Capture stderr with the cached bundle")
+                    .help("Capture stderr with the cached bundle")
                     .long("stderr")
                     .takes_value(false),
             )
             .arg(
                 Arg::new("verbose")
-                    .about("Verbose output")
+                    .help("Verbose output")
                     .short('v')
                     .long("verbose")
                     .takes_value(false),
             )
             .arg(
                 Arg::new("cache_failure")
-                    .about("Verbose output")
+                    .help("Verbose output")
                     .short('f')
                     .long("cache_failure"),
             )
@@ -202,62 +202,62 @@ impl Config {
                 Arg::new("backend")
                     .short('b')
                     .long("backend")
-                    .about("which backend to use")
+                    .help("which backend to use")
                     .possible_values(&["dummy", "s3"]),
             )
             .arg(
                 Arg::new("honeycomb_dataset")
                     .long("honeycomb_dataset")
-                    .about("Honeycomb Dataset")
+                    .help("Honeycomb Dataset")
                     .takes_value(true),
             )
             .arg(
                 Arg::new("honeycomb_token")
                     .long("honeycomb_token")
-                    .about("Honeycomb Access Token")
+                    .help("Honeycomb Access Token")
                     .takes_value(true),
             )
             .arg(
                 Arg::new("honeycomb_trace_id")
                     .long("honeycomb_trace_id")
-                    .about("Honeycomb Trace ID")
+                    .help("Honeycomb Trace ID")
                     .takes_value(true),
             )
             .arg(
                 Arg::new("honeycomb_parent_id")
                     .long("honeycomb_parent_id")
-                    .about("Honeycomb trace span parent ID")
+                    .help("Honeycomb trace span parent ID")
                     .takes_value(true),
             )
             .arg(
                 Arg::new("honeycomb_kv")
                     .long("honeycomb_kv")
-                    .about("Honeycomb Extra Key-Value")
+                    .help("Honeycomb Extra Key-Value")
                     .takes_value(true)
                     .multiple_occurrences(true),
             )
             .arg(
                 Arg::new("s3_bucket")
                     .long("s3_bucket")
-                    .about("S3 bucket name")
+                    .help("S3 bucket name")
                     .takes_value(true),
             )
             .arg(
                 Arg::new("s3_bucket_objects")
                     .long("s3_bucket_objects")
-                    .about("S3 bucket for objects name")
+                    .help("S3 bucket for objects name")
                     .takes_value(true),
             )
             .arg(
                 Arg::new("s3_endpoint")
                     .long("s3_endpoint")
-                    .about("S3 endpoint")
+                    .help("S3 endpoint")
                     .takes_value(true),
             )
             .arg(
                 Arg::new("s3_region")
                     .long("s3_region")
-                    .about("S3 region")
+                    .help("S3 region")
                     .takes_value(true),
             )
             .arg(Arg::new("command_to_run").last(true));
