@@ -10,6 +10,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::os::unix::prelude::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tempfile::NamedTempFile;
 use tokio::io::AsyncWriteExt;
 use tokio::process::{Child, Command};
@@ -108,14 +109,14 @@ impl<'a> Capsule<'a> {
         &self,
         inputs: &InputHashBundle,
         lookup_result: &Option<InputOutputBundle>,
-        program_run: &mut bool,
+        program_run: &mut AtomicBool,
     ) -> Result<ExitStatus> {
         eprintln!("Executing command: {:?}", self.config.command_to_run);
         let mut child = self.execute_command().await?;
         // Having executed the command, just need to tell our caller
         // whether we succeeded in running the program.  this happens
         // as soon as we have a child program.
-        *program_run = true;
+        program_run.store(true, Ordering::SeqCst);
         let exit_status = child.wait().await.with_context(|| "Waiting for child")?;
 
         // Now that we got the exit code, we try hard to pass it back to exit.
@@ -224,7 +225,7 @@ impl<'a> Capsule<'a> {
         Ok(())
     }
 
-    pub async fn run_capsule(&self, program_run: &mut bool) -> Result<i32> {
+    pub async fn run_capsule(&self, program_run: &mut AtomicBool) -> Result<i32> {
         let inputs = self.read_inputs()?;
         let lookup_result = self.caching_backend.lookup(&inputs).await?;
         if let Some(ref lookup_result) = lookup_result {
@@ -527,20 +528,20 @@ mod tests {
         )
         .unwrap();
         let capsule = Capsule::new(&config, &backend, &Dummy);
-        let mut run_program = false;
-        let code = capsule.run_capsule(&mut run_program).await.unwrap();
+        let mut program_run = AtomicBool::new(false);
+        let code = capsule.run_capsule(&mut program_run).await.unwrap();
         assert_eq!(code, 0);
-        assert!(run_program);
+        assert!(program_run.load(Ordering::SeqCst));
 
         std::fs::remove_file(&out_file_1).unwrap();
 
         // 2nd should be cached, and command not run.
         let capsule = Capsule::new(&config, &backend, &Dummy);
-        let mut run_program = false;
-        let code = capsule.run_capsule(&mut run_program).await.unwrap();
+        let mut program_run = AtomicBool::new(false);
+        let code = capsule.run_capsule(&mut program_run).await.unwrap();
         assert_eq!(code, 0);
         // The 2nd time the program should not be run.
-        assert!(!run_program);
+        assert!(!program_run.load(Ordering::SeqCst));
 
         assert!(out_file_1.is_file());
     }
@@ -571,10 +572,10 @@ mod tests {
         )
         .unwrap();
         let capsule = Capsule::new(&config, &backend, &Dummy);
-        let mut run_program = false;
-        let code = capsule.run_capsule(&mut run_program).await.unwrap();
+        let mut program_run = AtomicBool::new(false);
+        let code = capsule.run_capsule(&mut program_run).await.unwrap();
         assert_eq!(code, 0);
-        assert!(run_program);
+        assert!(program_run.load(Ordering::SeqCst));
 
         std::fs::remove_file(&out_file_1).unwrap();
 
@@ -582,11 +583,11 @@ mod tests {
 
         // 2nd should NOT be cached, and command run.
         let capsule = Capsule::new(&config, &backend, &Dummy);
-        let mut run_program = false;
-        let code = capsule.run_capsule(&mut run_program).await.unwrap();
+        let mut program_run = AtomicBool::new(false);
+        let code = capsule.run_capsule(&mut program_run).await.unwrap();
         assert_eq!(code, 0);
         // The 2nd time the program should be run, as there's no cache hit.
-        assert!(run_program);
+        assert!(program_run.load(Ordering::SeqCst));
 
         assert!(out_file_1.is_file());
     }
@@ -617,10 +618,10 @@ mod tests {
         )
         .unwrap();
         let capsule = Capsule::new(&config, &backend, &Dummy);
-        let mut run_program = false;
-        let code = capsule.run_capsule(&mut run_program).await.unwrap();
+        let mut program_run = AtomicBool::new(false);
+        let code = capsule.run_capsule(&mut program_run).await.unwrap();
         assert_eq!(code, 0);
-        assert!(run_program);
+        assert!(program_run.load(Ordering::SeqCst));
 
         std::fs::remove_file(&out_file_1).unwrap();
 
@@ -645,11 +646,11 @@ mod tests {
         )
         .unwrap();
         let capsule = Capsule::new(&config, &backend, &Dummy);
-        let mut run_program = false;
-        let code = capsule.run_capsule(&mut run_program).await.unwrap();
+        let mut program_run = AtomicBool::new(false);
+        let code = capsule.run_capsule(&mut program_run).await.unwrap();
         assert_eq!(code, 0);
         // The 2nd time the program should be run, as there's no cache hit.
-        assert!(run_program);
+        assert!(program_run.load(Ordering::SeqCst));
 
         assert!(out_file_1.is_file());
     }
@@ -671,8 +672,8 @@ mod tests {
         )
         .unwrap();
         let capsule = Capsule::new(&config, &backend, &Dummy);
-        let mut run_program = false;
-        let code = capsule.run_capsule(&mut run_program).await;
+        let mut program_run = AtomicBool::new(false);
+        let code = capsule.run_capsule(&mut program_run).await;
         assert!(code.is_err());
     }
 
@@ -708,18 +709,18 @@ mod tests {
         )
         .unwrap();
         let capsule = Capsule::new(&config, &backend, &Dummy);
-        let mut run_program = false;
-        let code = capsule.run_capsule(&mut run_program).await.unwrap();
+        let mut program_run = AtomicBool::new(false);
+        let code = capsule.run_capsule(&mut program_run).await.unwrap();
         assert_eq!(code, 0);
-        assert!(run_program);
+        assert!(program_run.load(Ordering::SeqCst));
 
         std::fs::remove_file(&out_file_1).unwrap();
 
         let capsule = Capsule::new(&config, &backend, &Dummy);
-        let mut run_program = false;
-        let code = capsule.run_capsule(&mut run_program).await.unwrap();
+        let mut program_run = AtomicBool::new(false);
+        let code = capsule.run_capsule(&mut program_run).await.unwrap();
         assert_eq!(code, 0);
-        assert!(run_program);
+        assert!(program_run.load(Ordering::SeqCst));
         assert!(out_file_1.is_file());
     }
 
@@ -750,19 +751,19 @@ mod tests {
         )
         .unwrap();
         let capsule = Capsule::new(&config, &backend, &Dummy);
-        let mut run_program = false;
-        let code = capsule.run_capsule(&mut run_program).await.unwrap();
+        let mut program_run = AtomicBool::new(false);
+        let code = capsule.run_capsule(&mut program_run).await.unwrap();
         assert_eq!(code, 0);
-        assert!(run_program);
+        assert!(program_run.load(Ordering::SeqCst));
 
         std::fs::remove_file(&out_file).unwrap();
 
         let capsule = Capsule::new(&config, &backend, &Dummy);
-        let mut run_program = false;
-        let code = capsule.run_capsule(&mut run_program).await.unwrap();
+        let mut program_run = AtomicBool::new(false);
+        let code = capsule.run_capsule(&mut program_run).await.unwrap();
         assert_eq!(code, 0);
         // The 2nd time the program should NOT run.
-        assert!(!run_program);
+        assert!(!program_run.load(Ordering::SeqCst));
         assert!(out_file.is_file());
         assert_eq!(out_file.metadata().unwrap().permissions().mode() & 0o777, 0o755);
     }
@@ -792,21 +793,21 @@ mod tests {
         )
         .unwrap();
         let capsule = Capsule::new(&config, &backend, &Dummy);
-        let mut run_program = false;
-        let code = capsule.run_capsule(&mut run_program).await.unwrap();
+        let mut program_run = AtomicBool::new(false);
+        let code = capsule.run_capsule(&mut program_run).await.unwrap();
         assert_eq!(code, 0);
-        assert!(run_program);
+        assert!(program_run.load(Ordering::SeqCst));
 
         // Create the file
         std::fs::File::create(&out_file).unwrap();
         assert!(out_file.exists());
 
         let capsule = Capsule::new(&config, &backend, &Dummy);
-        let mut run_program = false;
-        let code = capsule.run_capsule(&mut run_program).await.unwrap();
+        let mut program_run = AtomicBool::new(false);
+        let code = capsule.run_capsule(&mut program_run).await.unwrap();
         assert_eq!(code, 0);
         // The 2nd time the program should NOT run.
-        assert!(!run_program);
+        assert!(!program_run.load(Ordering::SeqCst));
 
         // Because the out file was not present when the run was cached, we should expect it
         // to be removed.

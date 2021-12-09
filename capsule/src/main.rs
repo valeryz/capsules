@@ -11,6 +11,7 @@ use capsule::wrapper;
 use std::env;
 use std::path::Path;
 use std::process;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 
 #[tokio::main]
@@ -40,7 +41,7 @@ async fn main() -> Result<()> {
 
     // Running of the capsule may fail. It may fail either before the wrapped program
     // was run, or after. This flag says whether the program was actually run.
-    let mut program_run = false;
+    let mut program_run = AtomicBool::new(false);
     let result = capsule.run_capsule(&mut program_run).await;
 
     match result {
@@ -52,7 +53,7 @@ async fn main() -> Result<()> {
             eprintln!("Capsule error: {:#}", err);
             // If we failed to run the program, try falling back to
             // just 'exec' behavior without any results caching.
-            if !program_run {
+            if !program_run.load(Ordering::SeqCst) {
                 wrapper::exec().expect("Execution of wrapped program failed");
                 unreachable!()
             } else {
