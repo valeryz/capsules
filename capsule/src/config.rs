@@ -267,7 +267,7 @@ impl Config {
         // If we explicitly name our program placebo, it will act as such, otherwise we move to Blue
         // Pill milestone.
         let cmdline_args: Vec<OsString> = cmdline_args.into_iter().map(Into::into).collect();
-        if cmdline_args.len() < 1 {
+        if cmdline_args.is_empty() {
             return Err(anyhow!("No argv0"));
         }
 
