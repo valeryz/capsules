@@ -37,6 +37,9 @@ pub struct Config {
     pub verbose: bool,
 
     #[serde(default)]
+    pub passive: bool,  // In the passive mode, capsule simply runs the binary, without even cache lookups etc.
+    
+    #[serde(default)]
     pub cache_failure: bool,
 
     #[serde(skip)]
@@ -200,6 +203,12 @@ impl Config {
                     .takes_value(false),
             )
             .arg(
+                Arg::new("passive")
+                    .help("Passive mode - just execute the wrapped command, no lookups, no caching etc.")
+                    .long("passive")
+                    .takes_value(false),
+            )
+            .arg(
                 Arg::new("cache_failure")
                     .help("Verbose output")
                     .short('f')
@@ -337,6 +346,9 @@ impl Config {
         }
         if matches.is_present("verbose") {
             config.verbose = true;
+        }
+        if matches.is_present("passive") {
+            config.passive = true;
         }
         if matches.is_present("cache_failure") {
             config.cache_failure = true;

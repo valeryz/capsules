@@ -13,7 +13,7 @@ use std::process::ExitStatus;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tempfile::NamedTempFile;
 use tokio::io::AsyncWriteExt;
-use tokio::process::{Child, Command};
+use tokio::process::{Command};
 
 use crate::caching::backend::CachingBackend;
 use crate::config::{Config, Milestone};
@@ -105,20 +105,34 @@ impl<'a> Capsule<'a> {
         left.hash == right.hash
     }
 
+    async fn execute_command(&self, inputs: &InputHashBundle, program_run: &mut AtomicBool) -> Result<ExitStatus> {
+        eprintln!("Executing command: {:?}", self.config.command_to_run);
+        if self.config.command_to_run.is_empty() {
+            Err(anyhow!(USAGE))
+        } else {
+            let mut child = Command::new(&self.config.command_to_run[0])
+                .args(&self.config.command_to_run[1..])
+                .env("CAPSULE_INPUTS_HASH", &inputs.hash)
+                .spawn()
+                .with_context(|| "Spawning command")?;
+            // Having executed the command, just need to tell our caller whether we succeeded in
+            // running the program.  this happens as soon as we have a child program.
+            program_run.store(true, Ordering::SeqCst);
+            let exit_status = child.wait().await?;
+            Ok(exit_status)
+        }
+    }
+
     async fn execute_and_cache(
         &self,
         inputs: &InputHashBundle,
         lookup_result: &Option<InputOutputBundle>,
         program_run: &mut AtomicBool,
     ) -> Result<ExitStatus> {
-        eprintln!("Executing command: {:?}", self.config.command_to_run);
-        let mut child = self.execute_command(inputs).await?;
-        // Having executed the command, just need to tell our caller
-        // whether we succeeded in running the program.  this happens
-        // as soon as we have a child program.
-        program_run.store(true, Ordering::SeqCst);
-        let exit_status = child.wait().await.with_context(|| "Waiting for child")?;
-
+        let exit_status = self
+            .execute_command(inputs, program_run)
+            .await
+            .with_context(|| "Waiting for child")?;
         // Now that we got the exit code, we try hard to pass it back to exit.
         // If we fail along the way, we should complain, but still continue.
         match self.read_outputs(exit_status.code()) {
@@ -228,6 +242,15 @@ impl<'a> Capsule<'a> {
 
     pub async fn run_capsule(&self, program_run: &mut AtomicBool) -> Result<i32> {
         let inputs = self.read_inputs()?;
+        // In passive mode, skip everything, except reading inputs as we still want to fill
+        // CAPSULE_INPUTS_HASH with data about the capsule inputs.
+        if self.config.passive {
+            return self
+                .execute_command(&inputs, program_run)
+                .await
+                .with_context(|| "Waiting for child")
+                .map(|exit_status| exit_status.into_raw());
+        }
         let lookup_result = self.caching_backend.lookup(&inputs).await?;
         if let Some(ref lookup_result) = lookup_result {
             // We have a cache hit, but in case we are in placebo mode, or we have cached a failure,
@@ -302,18 +325,6 @@ impl<'a> Capsule<'a> {
         self.execute_and_cache(&inputs, &lookup_result, program_run)
             .await
             .map(|exit_status| exit_status.into_raw())
-    }
-
-    async fn execute_command(&self, inputs: &InputHashBundle) -> Result<Child> {
-        if self.config.command_to_run.is_empty() {
-            Err(anyhow!(USAGE))
-        } else {
-            Command::new(&self.config.command_to_run[0])
-                .args(&self.config.command_to_run[1..])
-                .env("CAPSULE_INPUTS_HASH", &inputs.hash)
-                .spawn()
-                .with_context(|| "Spawning command")
-        }
     }
 }
 
