@@ -183,6 +183,7 @@ impl<'a> Capsule<'a> {
             if let Output::File(ref fileoutput) = item {
                 if fileoutput.present {
                     let dir = fileoutput.filename.parent().context("No parent directory")?;
+                    std::fs::create_dir_all(dir)?;
                     let file = NamedTempFile::new_in(dir)?;
                     let (file, path) = file.into_parts();
                     let mut file_stream = tokio::fs::File::from_std(file);
