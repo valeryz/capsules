@@ -367,7 +367,7 @@ mod tests {
         let capsule = Capsule::new(&config, &backend, &Dummy);
         assert_eq!(capsule.read_inputs().unwrap().hash, EMPTY_SHA256);
         let mut program_run = AtomicBool::new(false);
-        let code = capsule.run_capsule(&mut program_run).await.unwrap();
+        let _ = capsule.run_capsule(&mut program_run).await.unwrap();
         let out_file_contents = std::fs::read_to_string(out_file).unwrap();
         assert_eq!(out_file_contents, EMPTY_SHA256);
     }

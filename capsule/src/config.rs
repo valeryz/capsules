@@ -193,6 +193,13 @@ impl Config {
                     .takes_value(false),
             )
             .arg(
+                Arg::new("placebo")
+                    .help("Placebo mode")
+                    .short('p')
+                    .long("placebo")
+                    .takes_value(false),
+            )
+            .arg(
                 Arg::new("cache_failure")
                     .help("Verbose output")
                     .short('f')
@@ -282,7 +289,7 @@ impl Config {
             itertools::chain(&capsule_args[..], &cmdline_args[1..]),
         ));
 
-        if PathBuf::from(cmdline_args[0].clone()).ends_with("placebo") {
+        if PathBuf::from(cmdline_args[0].clone()).ends_with("placebo") || matches.is_present("placebo") {
             config.milestone = Milestone::Placebo;
         } else {
             config.milestone = Milestone::BluePill;
