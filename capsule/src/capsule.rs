@@ -112,7 +112,7 @@ impl<'a> Capsule<'a> {
         program_run: &mut AtomicBool,
     ) -> Result<ExitStatus> {
         eprintln!("Executing command: {:?}", self.config.command_to_run);
-        let mut child = self.execute_command().await?;
+        let mut child = self.execute_command(inputs).await?;
         // Having executed the command, just need to tell our caller
         // whether we succeeded in running the program.  this happens
         // as soon as we have a child program.
@@ -304,12 +304,13 @@ impl<'a> Capsule<'a> {
             .map(|exit_status| exit_status.into_raw())
     }
 
-    async fn execute_command(&self) -> Result<Child> {
+    async fn execute_command(&self, inputs: &InputHashBundle) -> Result<Child> {
         if self.config.command_to_run.is_empty() {
             Err(anyhow!(USAGE))
         } else {
             Command::new(&self.config.command_to_run[0])
                 .args(&self.config.command_to_run[1..])
+                .env("CAPSULE_INPUTS_HASH", &inputs.hash)
                 .spawn()
                 .with_context(|| "Spawning command")
         }
@@ -340,6 +341,35 @@ mod tests {
         let config = Config::new(["capsule", "-c", "wtf", "--", "/bin/echo"].iter(), None, None).unwrap();
         let capsule = Capsule::new(&config, &backend, &Dummy);
         assert_eq!(capsule.read_inputs().unwrap().hash, EMPTY_SHA256);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_capsule_inputs_hash_env() {
+        let tmp_dir = TempDir::new().unwrap();
+        let out_file = tmp_dir.path().join("xx");
+        let backend = dummy::DummyBackend::default();
+        let config = Config::new(
+            [
+                "capsule",
+                "-c",
+                "wtf",
+                "--",
+                "/bin/bash",
+                "-c",
+                &format!("echo -n ${{CAPSULE_INPUTS_HASH}} > {}", out_file.to_string_lossy()),
+            ]
+            .iter(),
+            None,
+            None,
+        )
+        .unwrap();
+        let capsule = Capsule::new(&config, &backend, &Dummy);
+        assert_eq!(capsule.read_inputs().unwrap().hash, EMPTY_SHA256);
+        let mut program_run = AtomicBool::new(false);
+        let code = capsule.run_capsule(&mut program_run).await.unwrap();
+        let out_file_contents = std::fs::read_to_string(out_file).unwrap();
+        assert_eq!(out_file_contents, EMPTY_SHA256);
     }
 
     #[test]
