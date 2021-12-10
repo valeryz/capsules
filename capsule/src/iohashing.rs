@@ -60,7 +60,7 @@ impl OutputHashBundle {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct InputOutputBundle {
     pub inputs: InputHashBundle,
     pub outputs: OutputHashBundle,

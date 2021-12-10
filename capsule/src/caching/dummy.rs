@@ -1,6 +1,8 @@
+use anyhow::{anyhow, Result};
 use crate::caching::backend::CachingBackend;
-use anyhow::Result;
 use async_trait::async_trait;
+use std::pin::Pin;
+use tokio::io::AsyncRead;
 
 use crate::iohashing::{InputHashBundle, InputOutputBundle, OutputHashBundle};
 
@@ -21,8 +23,16 @@ impl CachingBackend for DummyBackend {
         Ok(None)
     }
 
-    /// Read all output files from S3, and place them into destination paths.
-    async fn read_files(&self, _outputs: &OutputHashBundle) -> Result<()> {
+    async fn download_object_file(&self, _item_hash: &str) -> Result<Pin<Box<dyn AsyncRead>>> {
+        Err(anyhow!("downloading object file in the dummy backend"))
+    }
+
+    async fn upload_object_file(
+        &self,
+        _item_hash: &str,
+        _file: Pin<Box<dyn AsyncRead + Send>>,
+        _content_length: u64,
+    ) -> Result<()> {
         Ok(())
     }
 
@@ -35,10 +45,6 @@ impl CachingBackend for DummyBackend {
             println!("  Capsule Inputs hashes: {:?}", inputs.hash_details);
             println!("  Capsule Outputs hashes: {:?}", outputs.hash_details);
         }
-        Ok(())
-    }
-
-    async fn write_files(&self, _outputs: &OutputHashBundle) -> Result<()> {
         Ok(())
     }
 }

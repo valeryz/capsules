@@ -7,7 +7,7 @@ build-test-debug-stable:
   stage: build
   image: registry.gitlab.com/dfinity-lab/open/capsules/rust-minio:latest
   tags:
-    - dfinity
+    - shared
   allow_failure: true  # As of 11/2021, we build on nightly. On Jan 13, we can switch to stable.
   script: |
     set -eux
@@ -19,7 +19,7 @@ build-test-debug-nightly:
   stage: build
   image: registry.gitlab.com/dfinity-lab/open/capsules/rust-minio:nightly
   tags:
-    - dfinity
+    - shared
   script: |
     set -eux
     cd capsule
@@ -30,7 +30,7 @@ build-release:
   stage: build
   image: registry.gitlab.com/dfinity-lab/open/capsules/rust-minio:nightly
   tags:
-    - dfinity
+    - shared
   script: |
     cd capsule 
     cargo build --package capsule --release
@@ -47,7 +47,7 @@ upload-release:
   stage: upload
   image: curlimages/curl:latest
   tags:
-    - dfinity
+    - shared
   rules:
     - if: $CI_COMMIT_TAG
   script: |
@@ -66,7 +66,7 @@ make-release:
   stage: release
   image: registry.gitlab.com/gitlab-org/release-cli:latest
   tags:
-    - dfinity
+    - shared
   rules:
     - if: $CI_COMMIT_TAG
   script: |

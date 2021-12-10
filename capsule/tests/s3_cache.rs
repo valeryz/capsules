@@ -66,7 +66,6 @@ fn test_s3_cache_hit() {
 }
 
 #[test]
-#[ignore]
 fn test_cache_expiration() {
     let setup_data = common::setup(); // RAII - clean up on destruction.
     let input = setup_data.path("input.txt");
@@ -93,8 +92,8 @@ fn test_cache_expiration() {
     println!("Checking file {:?}", side_effect);
     assert!(side_effect.exists());
 
-    // TODO: Inbetween, clean the cache.
-    assert!(false);
+    // Inbetween, clean the cache.
+    common::remove_bucket(setup_data.port, "capsule-test");
 
     // Run it second time.
     let side_effect = setup_data.path("side_effect_2.txt");
@@ -115,6 +114,6 @@ fn test_cache_expiration() {
         ],
     );
     println!("Checking file {:?}", side_effect);
-    // Verify that the second time the side effect is absent.
+    // Verify that the second time the side effect is present
     assert!(side_effect.exists());
 }
