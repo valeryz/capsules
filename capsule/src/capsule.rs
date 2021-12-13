@@ -23,9 +23,6 @@ use crate::observability::logger::Logger;
 static USAGE: &str = "Usage: capsule <capsule arguments ...> -- command [<arguments>]";
 
 pub struct Capsule<'a> {
-    /// Indicates whether the program has been run within the capsule.
-    pub program_run: bool,
-
     config: &'a Config,
     caching_backend: &'a dyn CachingBackend,
     logger: &'a dyn Logger,
@@ -34,7 +31,6 @@ pub struct Capsule<'a> {
 impl<'a> Capsule<'a> {
     pub fn new(config: &'a Config, caching_backend: &'a dyn CachingBackend, logger: &'a dyn Logger) -> Self {
         Self {
-            program_run: false,
             config,
             caching_backend,
             logger,
