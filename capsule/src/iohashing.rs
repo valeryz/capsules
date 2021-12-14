@@ -1,40 +1,86 @@
 use anyhow;
 use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::cmp::Ordering;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-#[derive(PartialOrd, Ord, PartialEq, Eq, Debug)]
-pub enum Input<'a> {
+#[derive(PartialOrd, Ord, PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
+pub enum Input {
     /// string uniquely defining the tool version (could be even the hash of its binary).    
-    ToolTag(&'a str),
+    ToolTag(String),
     /// Input file.
     File(PathBuf),
 }
 
 /// Input set is the set of all inputs to the build step.
-#[derive(Default, Debug)]
-pub struct InputSet<'a> {
-    pub inputs: Vec<Input<'a>>,
+#[derive(Default, Debug, Clone)]
+pub struct InputSet {
+    pub inputs: Vec<Input>,
 }
 
-#[derive(Debug, Default)]
-pub struct HashBundle<'a> {
+#[derive(PartialOrd, Ord, PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
+pub struct FileOutput {
+    pub filename: PathBuf,
+    pub present: bool,
+    pub mode: u32,
+}
+
+#[derive(PartialOrd, Ord, PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
+pub enum Output {
+    File(FileOutput),
+    ExitCode(i32),
+    Stdout(Vec<u8>),
+    Stderr(Vec<u8>),
+}
+
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
+pub struct InputHashBundle {
     pub hash: String,
-    pub hash_details: Vec<(&'a Input<'a>, String)>,
+    pub hash_details: Vec<(Input, String)>,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
+pub struct OutputHashBundle {
+    pub hash: String,
+    pub hash_details: Vec<(Output, String)>,
+}
+
+impl OutputHashBundle {
+    // Find the result code in all the fields.
+    pub fn result_code(&self) -> Option<i32> {
+        for (output, _) in &self.hash_details {
+            if let Output::ExitCode(code) = output {
+                return Some(*code);
+            }
+        }
+        None
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct InputOutputBundle {
+    pub inputs: InputHashBundle,
+    pub outputs: OutputHashBundle,
+}
+
+/// Output set is the set of all process outputs.
+#[derive(Default)]
+pub struct OutputSet {
+    pub outputs: Vec<Output>,
 }
 
 /// Returns the hash of the given file.
 ///
-/// TODO(valeryz): Cache these in a parent process' memory by the
+/// TODO(valeryz): Maybe cache these in a parent process' memory by the
 /// output of stat(2), except atime, so that we don't have to read
 /// them twice during a single build process.
 fn file_hash(filename: &Path) -> Result<String> {
     const BUFSIZE: usize = 4096;
     let mut acc = Sha256::new();
-    let mut f = File::open(filename).with_context(|| format!("Reading input file {:?}", filename))?;
+    let mut f = File::open(filename).with_context(|| format!("Reading input file '{}'", filename.to_string_lossy()))?;
     let mut buf: [u8; BUFSIZE] = [0; BUFSIZE];
     loop {
         let rd = f.read(&mut buf)?;
@@ -52,21 +98,27 @@ fn string_hash(s: &str) -> String {
     format!("{:x}", acc.finalize())
 }
 
+fn bytes_hash(s: &[u8]) -> String {
+    let mut acc = Sha256::new();
+    acc.update(s);
+    format!("{:x}", acc.finalize())
+}
+
 /// Helper function for both input and output hash finalization.
-fn bundle_hash<T>(hash_details: &[(T, String)]) -> String {
+fn bundle_hash<'a, I: Iterator<Item = (&'a str, &'a str)>>(hash_details: I) -> String {
     let mut acc: Sha256 = Sha256::new();
-    for hash in hash_details.iter() {
-        acc.update(&hash.1);
+    for (tag, hash) in hash_details {
+        acc.update(tag);
+        acc.update(hash);
     }
     format!("{:x}", acc.finalize())
 }
 
-
-impl<'a> InputSet<'a> {
+impl InputSet {
     /// Returns the HEX string of the hash of the whole input set.
     ///
     /// We calculate the whole hash bundle, and discard the separate hashes.
-    pub fn hash(&'a self) -> Result<String> {
+    pub fn hash(self) -> Result<String> {
         self.hash_bundle().map(|x| x.hash)
     }
 
@@ -74,20 +126,15 @@ impl<'a> InputSet<'a> {
     ///
     /// It does this by calculating a SHA256 hash of all SHA256 hashes of inputs (being either file
     /// or tool tag) sorted by the values of the hashes themselves.
-    pub fn hash_bundle(&'a self) -> Result<HashBundle<'a>> {
+    pub fn hash_bundle(self) -> Result<InputHashBundle> {
         // Calculate the hash of the input set independently of the order.
-        let mut hash_bundle = HashBundle::default();
-        for input in &self.inputs {
-            match input {
-                Input::File(s) => {
-                    hash_bundle.hash_details.push((input, format!("File{}", file_hash(s)?)));
-                }
-                Input::ToolTag(s) => {
-                    hash_bundle
-                        .hash_details
-                        .push((input, format!("ToolTag{}", string_hash(s))));
-                }
-            }
+        let mut hash_bundle = InputHashBundle::default();
+        for input in self.inputs {
+            let hash = match input {
+                Input::File(ref s) => file_hash(s)?,
+                Input::ToolTag(ref s) => string_hash(s),
+            };
+            hash_bundle.hash_details.push((input, hash));
         }
         // Sort inputs hashes by the hash value, but so that tool_tags come first.
         // This is needed so that when we cap our JSON, we could still see tool_tags.
@@ -102,51 +149,28 @@ impl<'a> InputSet<'a> {
                 a.1.cmp(&b.1)
             }
         });
-        hash_bundle.hash = bundle_hash(&hash_bundle.hash_details);
+        hash_bundle.hash = bundle_hash(hash_bundle.hash_details.iter().map(|(inp, hash)| {
+            (
+                match inp {
+                    Input::File(_) => "File",
+                    Input::ToolTag(_) => "ToolTag",
+                },
+                &hash[..],
+            )
+        }));
         Ok(hash_bundle)
     }
 
-    pub fn add_input(&mut self, input: Input<'a>) {
+    pub fn add_input(&mut self, input: Input) {
         self.inputs.push(input)
     }
 }
 
-// TODO: should we also add exec bit? or whole UNIX permissions?
-#[derive(PartialOrd, Ord, PartialEq, Eq, Debug)]
-pub struct FileOutput<'a> {
-    pub filename: &'a Path,
-    pub present: bool,
-    // TODO[bluepill]: add file contents, which would stored in the cache.
-}
-
-#[derive(PartialOrd, Ord, PartialEq, Eq, Debug)]
-pub enum Output<'a> {
-    // TODO: to be handled in placebo/blue pill.
-    File(&'a FileOutput<'a>),
-    ExitCode(usize),
-    // TODO[bluepill]: to be handled in the future.
-    Stdout(&'a str),
-    Stderr(&'a str),
-    Log(&'a FileOutput<'a>),
-}
-
-#[derive(Debug, Default)]
-pub struct OutputHashBundle<'a> {
-    pub hash: String,
-    pub hash_details: Vec<(&'a Output<'a>, String)>,
-}
-
-/// Output set is the set of all process outputs.
-#[derive(Default)]
-pub struct OutputSet<'a> {
-    pub outputs: Vec<Output<'a>>,
-}
-
-impl<'a> OutputSet<'a> {
+impl OutputSet {
     /// Returns the HEX string of the hash of the whole input set.
     ///
     /// We calculate the whole hash bundle, and discard the separate hashes.
-    pub fn hash(&'a self) -> Result<String> {
+    pub fn hash(self) -> Result<String> {
         self.hash_bundle().map(|x| x.hash)
     }
 
@@ -154,35 +178,41 @@ impl<'a> OutputSet<'a> {
     ///
     /// It does this by calculating a SHA256 hash of all SHA256 hashes of inputs (being either file
     /// or tool tag) sorted by the values of the hashes themselves.
-    pub fn hash_bundle(&'a self) -> Result<OutputHashBundle<'a>> {
+    pub fn hash_bundle(self) -> Result<OutputHashBundle> {
         // Calculate the hash of the input set independently of the order.
         let mut hash_bundle = OutputHashBundle::default();
-        for output in &self.outputs {
-            match output {
-                Output::File(file_output) => {
-                    hash_bundle.hash_details.push(
-                        (output,
-                         if file_output.present {
-                             format!("File{}", file_hash(file_output.filename)?)
-                         } else {
-                             "FileNonExistent".to_string()
-                         }))
+        for output in self.outputs {
+            let hash = match output {
+                Output::File(ref file_output) => {
+                    if file_output.present {
+                        file_hash(&file_output.filename)?
+                    } else {
+                        "".to_string()
+                    }
                 }
-                Output::ExitCode(code) => {
-                    hash_bundle
-                        .hash_details
-                        .push((output, format!("ExitCode{}", code)));
-                }
-                _ => { }
-            }
+                Output::ExitCode(code) => string_hash(&code.to_string()),
+                Output::Stdout(ref buffer) => bytes_hash(buffer),
+                Output::Stderr(ref buffer) => bytes_hash(buffer),
+            };
+            hash_bundle.hash_details.push((output, hash));
         }
         // Sort inputs hashes by the hash value.
         hash_bundle.hash_details.sort_by(|a, b| a.1.cmp(&b.1));
-        hash_bundle.hash = bundle_hash(&hash_bundle.hash_details);
+        hash_bundle.hash = bundle_hash(hash_bundle.hash_details.iter().map(|(inp, hash)| {
+            (
+                match inp {
+                    Output::File(_) => "File",
+                    Output::ExitCode(_) => "ExitCode",
+                    Output::Stdout(_) => "StdOut",
+                    Output::Stderr(_) => "StdErr",
+                },
+                &hash[..],
+            )
+        }));
         Ok(hash_bundle)
     }
 
-    pub fn add_output(&mut self, output: Output<'a>) {
+    pub fn add_output(&mut self, output: Output) {
         self.outputs.push(output)
     }
 }
@@ -219,11 +249,9 @@ mod tests {
     fn test_input_set_1() {
         let mut input_set = InputSet::default();
         let tool_tag = String::from("some tool_tag");
-        input_set.add_input(Input::ToolTag(&tool_tag));
+        input_set.add_input(Input::ToolTag(tool_tag));
         let hash1 = input_set.hash().unwrap();
         assert_ne!(hash1, EMPTY_SHA256);
-        let hash2 = input_set.hash().unwrap();
-        assert_eq!(hash1, hash2);
     }
 
     #[test]
@@ -231,11 +259,11 @@ mod tests {
         let mut input_set1 = InputSet::default();
         let tool_tag1 = String::from("some tool_tag");
         let tool_tag2 = String::from("another tool_tag");
-        input_set1.add_input(Input::ToolTag(&tool_tag1));
-        input_set1.add_input(Input::ToolTag(&tool_tag2));
+        input_set1.add_input(Input::ToolTag(tool_tag1.clone()));
+        input_set1.add_input(Input::ToolTag(tool_tag2.clone()));
         let mut input_set2 = InputSet::default();
-        input_set2.add_input(Input::ToolTag(&tool_tag2));
-        input_set2.add_input(Input::ToolTag(&tool_tag1));
+        input_set2.add_input(Input::ToolTag(tool_tag2));
+        input_set2.add_input(Input::ToolTag(tool_tag1));
         assert_eq!(input_set1.hash().unwrap(), input_set2.hash().unwrap());
     }
 
@@ -244,11 +272,11 @@ mod tests {
         let mut input_set1 = InputSet::default();
         let tool_tag1 = String::from("some tool_tag");
         let tool_tag2 = String::from("another tool_tag");
-        input_set1.add_input(Input::ToolTag(&tool_tag1));
-        input_set1.add_input(Input::ToolTag(&tool_tag2));
+        input_set1.add_input(Input::ToolTag(tool_tag1.clone()));
+        input_set1.add_input(Input::ToolTag(tool_tag2.clone()));
         let mut input_set2 = InputSet::default();
-        input_set2.add_input(Input::ToolTag(&tool_tag2));
-        input_set2.add_input(Input::ToolTag(&tool_tag1));
+        input_set2.add_input(Input::ToolTag(tool_tag2));
+        input_set2.add_input(Input::ToolTag(tool_tag1));
         let bundle1 = input_set1.hash_bundle().unwrap();
         let bundle2 = input_set2.hash_bundle().unwrap();
         assert_eq!(bundle1.hash, bundle2.hash);
@@ -267,7 +295,7 @@ mod tests {
         input_set.add_input(Input::File(file1.path().into()));
         // These hashes were obtained by manual manipulation files and `openssl sha256`
         assert_eq!(
-            input_set.hash().unwrap(),
+            input_set.clone().hash().unwrap(),
             "f409e4c7ae76997e69556daae6139bee1f02e4f618d3da8deea10bb35b6c0ebd"
         );
         input_set.add_input(Input::File(file2.path().into()));

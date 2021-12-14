@@ -4,11 +4,12 @@ use derivative::Derivative;
 use itertools;
 use serde::Deserialize;
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use std::{env, ffi::OsString};
 use toml;
 
-#[derive(Debug, Derivative)]
+#[derive(Debug, Derivative, PartialEq)]
 #[derivative(Default)]
 pub enum Milestone {
     #[derivative(Default)]
@@ -22,8 +23,8 @@ pub enum Milestone {
 #[derivative(Default)]
 pub enum Backend {
     #[derivative(Default)]
-    Stdio,
-    Honeycomb,
+    Dummy, // No backend means dummy.
+    S3,
 }
 
 #[derive(Debug, Deserialize, Derivative)]
@@ -34,6 +35,12 @@ pub struct Config {
 
     #[serde(default)]
     pub verbose: bool,
+
+    #[serde(default)]
+    pub passive: bool,  // In the passive mode, capsule simply runs the binary, without even cache lookups etc.
+    
+    #[serde(default)]
+    pub cache_failure: bool,
 
     #[serde(skip)]
     pub backend: Backend,
@@ -74,6 +81,18 @@ pub struct Config {
     // values of --honeycomb_kv flag, to be accessed via a method.
     #[serde(default)]
     honeycomb_kv: Vec<String>,
+
+    #[serde(default)]
+    pub s3_bucket: Option<String>,
+
+    #[serde(default)]
+    pub s3_bucket_objects: Option<String>,
+
+    #[serde(default)]
+    pub s3_endpoint: Option<String>,
+
+    #[serde(default)]
+    pub s3_region: Option<String>,
 }
 
 impl Config {
@@ -109,7 +128,7 @@ impl Config {
         if let Some(default_toml) = default_toml {
             if let Ok(contents) = std::fs::read_to_string(default_toml) {
                 let home_config = toml::from_str::<Config>(&contents)
-                    .with_context(|| format!("Parsing default config {:?}", default_toml))?;
+                    .with_context(|| format!("Parsing default config '{}'", default_toml.to_string_lossy()))?;
                 config = home_config;
             }
         }
@@ -127,7 +146,7 @@ impl Config {
             .version(env!("CARGO_PKG_VERSION"))
             .arg(
                 Arg::new("capsule_id")
-                    .about("The ID of the capsule (usually a target path)")
+                    .help("The ID of the capsule (usually a target path)")
                     .short('c')
                     .long("capsule_id")
                     .takes_value(true)
@@ -135,7 +154,7 @@ impl Config {
             )
             .arg(
                 Arg::new("input")
-                    .about("Input file")
+                    .help("Input file")
                     .short('i')
                     .long("input")
                     .takes_value(true)
@@ -143,7 +162,7 @@ impl Config {
             )
             .arg(
                 Arg::new("tool")
-                    .about("Tool string (usually with a version)")
+                    .help("Tool string (usually with a version)")
                     .short('t')
                     .long("tool")
                     .takes_value(true)
@@ -151,7 +170,7 @@ impl Config {
             )
             .arg(
                 Arg::new("output")
-                    .about("Output file")
+                    .help("Output file")
                     .short('o')
                     .long("output")
                     .takes_value(true)
@@ -159,78 +178,134 @@ impl Config {
             )
             .arg(
                 Arg::new("stdout")
-                    .about("Capture stdout with the cached bundle")
+                    .help("Capture stdout with the cached bundle")
                     .long("stdout")
                     .takes_value(false),
             )
             .arg(
                 Arg::new("stderr")
-                    .about("Capture stderr with the cached bundle")
+                    .help("Capture stderr with the cached bundle")
                     .long("stderr")
                     .takes_value(false),
             )
             .arg(
                 Arg::new("verbose")
-                    .about("Verbose output")
+                    .help("Verbose output")
                     .short('v')
                     .long("verbose")
                     .takes_value(false),
             )
             .arg(
+                Arg::new("placebo")
+                    .help("Placebo mode")
+                    .short('p')
+                    .long("placebo")
+                    .takes_value(false),
+            )
+            .arg(
+                Arg::new("passive")
+                    .help("Passive mode - just execute the wrapped command, no lookups, no caching etc.")
+                    .long("passive")
+                    .takes_value(false),
+            )
+            .arg(
+                Arg::new("cache_failure")
+                    .help("Verbose output")
+                    .short('f')
+                    .long("cache_failure"),
+            )
+            .arg(
                 Arg::new("backend")
                     .short('b')
                     .long("backend")
-                    .about("which backend to use")
-                    .possible_values(&["stdio", "honeycomb"]),
+                    .help("which backend to use")
+                    .possible_values(&["dummy", "s3"]),
             )
             .arg(
                 Arg::new("honeycomb_dataset")
                     .long("honeycomb_dataset")
-                    .about("Honeycomb Dataset")
+                    .help("Honeycomb Dataset")
                     .takes_value(true),
             )
             .arg(
                 Arg::new("honeycomb_token")
                     .long("honeycomb_token")
-                    .about("Honeycomb Access Token")
+                    .help("Honeycomb Access Token")
                     .takes_value(true),
             )
             .arg(
                 Arg::new("honeycomb_trace_id")
                     .long("honeycomb_trace_id")
-                    .about("Honeycomb Trace ID")
+                    .help("Honeycomb Trace ID")
                     .takes_value(true),
             )
             .arg(
                 Arg::new("honeycomb_parent_id")
                     .long("honeycomb_parent_id")
-                    .about("Honeycomb trace span parent ID")
+                    .help("Honeycomb trace span parent ID")
                     .takes_value(true),
             )
             .arg(
                 Arg::new("honeycomb_kv")
                     .long("honeycomb_kv")
-                    .about("Honeycomb Extra Key-Value")
+                    .help("Honeycomb Extra Key-Value")
                     .takes_value(true)
                     .multiple_occurrences(true),
             )
+            .arg(
+                Arg::new("s3_bucket")
+                    .long("s3_bucket")
+                    .help("S3 bucket name")
+                    .takes_value(true),
+            )
+            .arg(
+                Arg::new("s3_bucket_objects")
+                    .long("s3_bucket_objects")
+                    .help("S3 bucket for objects name")
+                    .takes_value(true),
+            )
+            .arg(
+                Arg::new("s3_endpoint")
+                    .long("s3_endpoint")
+                    .help("S3 endpoint")
+                    .takes_value(true),
+            )
+            .arg(
+                Arg::new("s3_region")
+                    .long("s3_region")
+                    .help("S3 region")
+                    .takes_value(true),
+            )
             .arg(Arg::new("command_to_run").last(true));
 
-        let match_sources = [
-            // First we look at the environment variable CAPSULE_ARGS,
-            // which has the default args, not listed on command line.
-            arg_matches.clone().get_matches_from(itertools::chain(
-                ["capsule"],
-                env::var("CAPSULE_ARGS").unwrap_or_default().split_whitespace(),
-            )),
-            // Then we look at the actual command line args.
-            arg_matches.clone().get_matches_from(cmdline_args),
-        ];
+        // Look at the first element of command line, to find and remember argv[0].
 
-        for matches in &match_sources {
-            if let Some(capsule_id) = matches.value_of("capsule_id") {
-                config.capsule_id = Some(capsule_id.to_owned());
-            }
+        // If we explicitly name our program placebo, it will act as such, otherwise we move to Blue
+        // Pill milestone.
+        let cmdline_args: Vec<OsString> = cmdline_args.into_iter().map(Into::into).collect();
+        if cmdline_args.is_empty() {
+            return Err(anyhow!("No argv0"));
+        }
+
+        let capsule_args: Vec<OsString> = shell_words::split(&env::var("CAPSULE_ARGS").unwrap_or_default())
+            .context("failed to parse CAPSULE_ARGS")?
+            .into_iter()
+            .map(Into::into)
+            .collect();
+
+        let matches = arg_matches.get_matches_from(itertools::chain(
+            &cmdline_args[..1],
+            itertools::chain(&capsule_args[..], &cmdline_args[1..]),
+        ));
+
+        if PathBuf::from(cmdline_args[0].clone()).ends_with("placebo") || matches.is_present("placebo") {
+            config.milestone = Milestone::Placebo;
+        } else {
+            config.milestone = Milestone::BluePill;
+        }
+
+        if let Some(capsule_id) = matches.value_of("capsule_id") {
+            config.capsule_id = Some(capsule_id.to_owned());
         }
 
         // If there's only one entry in Capsules.toml, it is implied,
@@ -252,50 +327,67 @@ impl Config {
             config.merge(&mut single_config);
         }
 
-        for matches in match_sources {
-            if let Some(inputs) = matches.values_of("input") {
-                config.input_files.extend(inputs.map(|x| x.to_owned()));
-            }
-            if let Some(tools) = matches.values_of("tool") {
-                config.tool_tags.extend(tools.map(|x| x.to_owned()));
-            }
-            if let Some(outputs) = matches.values_of("output") {
-                config.output_files.extend(outputs.map(|x| x.to_owned()));
-            }
-            if matches.is_present("stdout") {
-                config.capture_stdout = Some(true);
-            }
-            if matches.is_present("stderr") {
-                config.capture_stderr = Some(true);
-            }
-            if matches.is_present("verbose") {
-                config.verbose = true;
-            }
-            if let Some(command) = matches.values_of("command_to_run") {
-                config.command_to_run = command.map(|x| x.to_owned()).collect();
-            }
-            if let Some(backend) = matches.value_of("backend") {
-                if backend == "honeycomb" {
-                    config.backend = Backend::Honeycomb;
-                }
-            }
-            if let Some(value) = matches.value_of("honeycomb_dataset") {
-                config.honeycomb_dataset = Some(value.into());
-            }
-            if let Some(value) = matches.value_of("honeycomb_token") {
-                config.honeycomb_token = Some(value.into());
-            }
-            if let Some(value) = matches.value_of("honeycomb_trace_id") {
-                config.honeycomb_trace_id = Some(value.into());
-            }
-            if let Some(value) = matches.value_of("honeycomb_parent_id") {
-                config.honeycomb_parent_id = Some(value.into());
-            }
-            if let Some(values) = matches.values_of("honeycomb_kv") {
-                config.honeycomb_kv.extend(values.map(|x| x.to_owned()));
+        config.backend = Backend::Dummy; // default caching backend.
+
+        if let Some(inputs) = matches.values_of("input") {
+            config.input_files.extend(inputs.map(|x| x.to_owned()));
+        }
+        if let Some(tools) = matches.values_of("tool") {
+            config.tool_tags.extend(tools.map(|x| x.to_owned()));
+        }
+        if let Some(outputs) = matches.values_of("output") {
+            config.output_files.extend(outputs.map(|x| x.to_owned()));
+        }
+        if matches.is_present("stdout") {
+            config.capture_stdout = Some(true);
+        }
+        if matches.is_present("stderr") {
+            config.capture_stderr = Some(true);
+        }
+        if matches.is_present("verbose") {
+            config.verbose = true;
+        }
+        if matches.is_present("passive") {
+            config.passive = true;
+        }
+        if matches.is_present("cache_failure") {
+            config.cache_failure = true;
+        }
+        if let Some(command) = matches.values_of("command_to_run") {
+            config.command_to_run = command.map(|x| x.to_owned()).collect();
+        }
+        if let Some(backend) = matches.value_of("backend") {
+            if backend == "s3" {
+                config.backend = Backend::S3;
             }
         }
-
+        if let Some(value) = matches.value_of("honeycomb_dataset") {
+            config.honeycomb_dataset = Some(value.into());
+        }
+        if let Some(value) = matches.value_of("honeycomb_token") {
+            config.honeycomb_token = Some(value.into());
+        }
+        if let Some(value) = matches.value_of("honeycomb_trace_id") {
+            config.honeycomb_trace_id = Some(value.into());
+        }
+        if let Some(value) = matches.value_of("honeycomb_parent_id") {
+            config.honeycomb_parent_id = Some(value.into());
+        }
+        if let Some(values) = matches.values_of("honeycomb_kv") {
+            config.honeycomb_kv.extend(values.map(|x| x.to_owned()));
+        }
+        if let Some(value) = matches.value_of("s3_bucket") {
+            config.s3_bucket = Some(value.into());
+        }
+        if let Some(value) = matches.value_of("s3_bucket_objects") {
+            config.s3_bucket_objects = Some(value.into());
+        }
+        if let Some(value) = matches.value_of("s3_region") {
+            config.s3_region = Some(value.into());
+        }
+        if let Some(value) = matches.value_of("s3_endpoint") {
+            config.s3_endpoint = Some(value.into());
+        }
         if config.command_to_run.is_empty() {
             bail!("The command to run was not specified");
         }
@@ -310,6 +402,35 @@ impl Config {
             .collect::<Option<_>>()
             .ok_or_else(|| anyhow!("Can't parse honeycomb_kv"))
     }
+
+    // Check if all paths match at least one of the specified outputs.
+    pub fn outputs_match<'a, I: Iterator<Item = &'a Path>>(&self, paths: I) -> Result<bool> {
+        // Take all patterns from globs in self.output_files
+        let patterns = self
+            .output_files
+            .iter()
+            .map(|path| {
+                // Fix a common problem with patterns starting with ./
+                let path = if path.starts_with("./") { &path[2..] } else { path };
+                glob::Pattern::from_str(path)
+            })
+            .collect::<Result<Vec<glob::Pattern>, _>>()
+            .with_context(|| "Invalid output file pattern")?;
+        // For each given path, try to find at least one match in the patterns.
+        for path in paths {
+            let mut has_match = false;
+            for pattern in &patterns {
+                if pattern.matches_path(path) {
+                    has_match = true;
+                    break;
+                }
+            }
+            if !has_match {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
 }
 
 #[cfg(test)]
@@ -318,19 +439,28 @@ mod tests {
     use indoc::indoc;
     use serial_test::serial;
     use std::io::Write;
-    use std::iter;
     use tempfile::NamedTempFile;
-
-    const EMPTY_ARGS: iter::Empty<OsString> = std::iter::empty::<OsString>();
 
     #[test]
     #[serial] // Must serialize these tests so that env vars don't affect other tests.
     fn test_command_line_1() {
         env::set_var("CAPSULE_ARGS", "-c my_capsule -- /bin/echo");
-        let config = Config::new(EMPTY_ARGS, None, None).unwrap();
+        let config = Config::new(["capsule"], None, None);
+        env::remove_var("CAPSULE_ARGS");
+        let config = config.unwrap();
         assert_eq!(config.capsule_id.unwrap(), "my_capsule");
         assert_eq!(config.command_to_run[0], "/bin/echo");
+    }
+
+    #[test]
+    #[serial]
+    fn test_capsule_args_with_space() {
+        env::set_var("CAPSULE_ARGS", "-c 'my capsule id' -- /bin/echo");
+        let config = Config::new(["capsule"], None, None);
         env::remove_var("CAPSULE_ARGS");
+        let config = config.unwrap();
+        assert_eq!(config.capsule_id.unwrap(), "my capsule id");
+        assert_eq!(config.command_to_run[0], "/bin/echo");
     }
 
     #[test]
