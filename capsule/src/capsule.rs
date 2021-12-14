@@ -44,11 +44,16 @@ impl<'a> Capsule<'a> {
     pub fn read_inputs(&self) -> Result<InputHashBundle> {
         let mut inputs = InputSet::default();
         for file_pattern in &self.config.input_files {
+            let mut file_count = 0;
             for file in glob(file_pattern)? {
                 let file = file?;
                 if file.is_file() {
                     inputs.add_input(Input::File(file));
+                    file_count += 1;
                 }
+            }
+            if file_count == 0 {
+                return Err(anyhow!("Pattern '{:?}' didn't match any files", file_pattern));
             }
         }
 
@@ -390,7 +395,7 @@ mod tests {
         )
         .unwrap();
         let capsule = Capsule::new(&config, &backend, &Dummy);
-        assert!(capsule.read_inputs().is_ok());
+        assert!(capsule.read_inputs().is_err());
     }
 
     #[test]
