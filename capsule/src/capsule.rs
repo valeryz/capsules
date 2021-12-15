@@ -7,7 +7,6 @@ use glob::glob;
 use indoc::indoc;
 use std::io::ErrorKind;
 use std::os::unix::fs::PermissionsExt;
-use std::os::unix::prelude::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -241,6 +240,8 @@ impl<'a> Capsule<'a> {
         Ok(())
     }
 
+    const DEFAULT_EXIT_CODE: i32 = 1;  // A catchall error code with no special meaning.
+
     pub async fn run_capsule(&self, program_run: &mut AtomicBool) -> Result<i32> {
         let inputs = self.read_inputs()?;
         // In passive mode, skip everything, except reading inputs as we still want to fill
@@ -250,7 +251,7 @@ impl<'a> Capsule<'a> {
                 .execute_command(&inputs, program_run)
                 .await
                 .with_context(|| "Waiting for child")
-                .map(|exit_status| exit_status.into_raw());
+                .map(|exit_status| exit_status.code().unwrap_or(Self::DEFAULT_EXIT_CODE));
         }
         let lookup_result = self.caching_backend.lookup(&inputs).await?;
         if let Some(ref lookup_result) = lookup_result {
@@ -309,7 +310,7 @@ impl<'a> Capsule<'a> {
                             .unwrap_or_else(|err| {
                                 eprintln!("Failed to log results for observability: {}", err);
                             });
-                        return Ok(lookup_result.outputs.result_code().unwrap_or(127));
+                        return Ok(lookup_result.outputs.result_code().unwrap_or(Self::DEFAULT_EXIT_CODE));
                     }
                     Err(e) => {
                         println!(
@@ -325,7 +326,7 @@ impl<'a> Capsule<'a> {
         // If we got here, we should execute.
         self.execute_and_cache(&inputs, &lookup_result, program_run)
             .await
-            .map(|exit_status| exit_status.into_raw())
+            .map(|exit_status| exit_status.code().unwrap_or(Self::DEFAULT_EXIT_CODE))
     }
 }
 
