@@ -57,7 +57,7 @@ impl Honeycomb {
 
 /// Max number of JSON entries in the dict. We need to cap it so that
 /// the JSON Size doesn't exceed 100kB.
-const MAX_JSON_ENTRIES: usize = 500;
+const MAX_JSON_ENTRIES: usize = 200;
 
 /// Convert hash deails (with each filename and tool_tag separately) to JSON.
 fn hash_details_to_json(bundle: &InputHashBundle) -> serde_json::Value {
