@@ -117,7 +117,7 @@ pub fn setup() -> SetupData {
     }
 }
 
-pub fn capsule(port: u16, args: &[&str]) {
+pub fn capsule(port: u16, args: &[&str]) -> i32 {
     let output = assert_cmd::Command::cargo_bin("capsule")
         .expect("Couldn't find capsule target")
         .env("AWS_ACCESS_KEY_ID", "minioadmin")
@@ -134,7 +134,7 @@ pub fn capsule(port: u16, args: &[&str]) {
         .expect("Couldn't execute capsule");
     io::stdout().write_all(&output.stdout).unwrap();
     io::stderr().write_all(&output.stderr).unwrap();
-    assert!(output.status.success());
+    output.status.code().unwrap_or(1)
 }
 
 pub fn remove_bucket(port: u16, bucket: &str) {
