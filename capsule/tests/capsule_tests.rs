@@ -1,6 +1,20 @@
 mod common;
 
 #[test]
+fn test_error_code() {
+    let setup_data = common::setup(); // RAII - clean up on destruction.
+    let path = setup_data.path("output.txt");
+    let command = format!("echo 'wtf' > {}; exit 111", path.to_str().unwrap());
+    let error_code = common::capsule(
+        setup_data.port,
+        &["-c", "wtf", "-b", "s3", "--", "/bin/bash", "-c", &command],
+    );
+    println!("Checking file {:?}", path);
+    assert!(path.exists());
+    assert_eq!(error_code, 111);
+}
+
+#[test]
 fn test_s3_cache_miss() {
     let setup_data = common::setup(); // RAII - clean up on destruction.
     let path = setup_data.path("output.txt");
