@@ -112,7 +112,7 @@ impl<'a> Capsule<'a> {
         } else {
             let mut child = Command::new(&self.config.command_to_run[0])
                 .args(&self.config.command_to_run[1..])
-                .env("CAPSULE_INPUTS_HASH", &inputs.hash)
+                .env(&self.config.inputs_hash_var, &inputs.hash)
                 .spawn()
                 .with_context(|| "Spawning command")?;
             // Having executed the command, just need to tell our caller whether we succeeded in

@@ -93,6 +93,9 @@ pub struct Config {
 
     #[serde(default)]
     pub s3_region: Option<String>,
+
+    #[serde(default)]
+    pub inputs_hash_var: String,
 }
 
 impl Config {
@@ -276,6 +279,13 @@ impl Config {
                     .help("S3 region")
                     .takes_value(true),
             )
+            .arg(
+                Arg::new("inputs_hash_var")
+                    .long("inputs_hash_var")
+                    .help("Variable in which the hash of inputs values stored")
+                    .takes_value(true)
+                    .default_value("CAPSULE_INPUTS_HASH"),
+            )
             .arg(Arg::new("command_to_run").last(true));
 
         // Look at the first element of command line, to find and remember argv[0].
@@ -387,6 +397,9 @@ impl Config {
         }
         if let Some(value) = matches.value_of("s3_endpoint") {
             config.s3_endpoint = Some(value.into());
+        }
+        if let Some(value) = matches.value_of("inputs_hash_var") {
+            config.inputs_hash_var = value.to_string();
         }
         if config.command_to_run.is_empty() {
             bail!("The command to run was not specified");
