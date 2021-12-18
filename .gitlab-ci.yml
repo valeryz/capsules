@@ -10,7 +10,6 @@ build-test-debug-stable:
     - shared
   script: |
     set -eux
-    cd capsule
     cargo build --verbose --package capsule
     cargo test --verbose --package capsule
 
@@ -21,7 +20,6 @@ build-test-debug-nightly:
     - shared
   script: |
     set -eux
-    cd capsule
     cargo build --verbose --package capsule
     cargo test --verbose --package capsule
 
@@ -31,11 +29,10 @@ build-release:
   tags:
     - shared
   script: |
-    cd capsule 
     cargo build --package capsule --release
   artifacts:
     paths:
-      - ./capsule/target/release/capsule
+      - ./target/release/capsule
 
 upload-release:
   before_script: []
@@ -51,7 +48,6 @@ upload-release:
     - if: $CI_COMMIT_TAG
   script: |
     set -eux
-    cd capsule
     export PACKAGE_REGISTRY_URL="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/capsule/${CI_COMMIT_TAG}"
     curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ./target/release/capsule "${PACKAGE_REGISTRY_URL}/capsule"
 
