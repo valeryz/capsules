@@ -37,8 +37,8 @@ pub struct Config {
     pub verbose: bool,
 
     #[serde(default)]
-    pub passive: bool,  // In the passive mode, capsule simply runs the binary, without even cache lookups etc.
-    
+    pub passive: bool, // In the passive mode, capsule simply runs the binary, without even cache lookups etc.
+
     #[serde(default)]
     pub cache_failure: bool,
 
@@ -303,19 +303,23 @@ impl Config {
             .map(Into::into)
             .collect();
 
-        let matches = arg_matches.get_matches_from(itertools::chain(
-            &cmdline_args[..1],
-            itertools::chain(&capsule_args[..], &cmdline_args[1..]),
-        ));
+        let match_sources = [
+            arg_matches
+                .clone()
+                .get_matches_from(itertools::chain(&cmdline_args[..1], &capsule_args[..])),
+            arg_matches.get_matches_from(&cmdline_args[..]),
+        ];
 
-        if PathBuf::from(cmdline_args[0].clone()).ends_with("placebo") || matches.is_present("placebo") {
-            config.milestone = Milestone::Placebo;
+        config.milestone = if PathBuf::from(cmdline_args[0].clone()).ends_with("placebo") {
+            Milestone::Placebo
         } else {
-            config.milestone = Milestone::BluePill;
-        }
+            Milestone::BluePill
+        };
 
-        if let Some(capsule_id) = matches.value_of("capsule_id") {
-            config.capsule_id = Some(capsule_id.to_owned());
+        for matches in &match_sources {
+            if let Some(capsule_id) = matches.value_of("capsule_id") {
+                config.capsule_id = Some(capsule_id.to_owned());
+            }
         }
 
         // If there's only one entry in Capsules.toml, it is implied,
@@ -338,69 +342,74 @@ impl Config {
         }
 
         config.backend = Backend::Dummy; // default caching backend.
-
-        if let Some(inputs) = matches.values_of("input") {
-            config.input_files.extend(inputs.map(|x| x.to_owned()));
-        }
-        if let Some(tools) = matches.values_of("tool") {
-            config.tool_tags.extend(tools.map(|x| x.to_owned()));
-        }
-        if let Some(outputs) = matches.values_of("output") {
-            config.output_files.extend(outputs.map(|x| x.to_owned()));
-        }
-        if matches.is_present("stdout") {
-            config.capture_stdout = Some(true);
-        }
-        if matches.is_present("stderr") {
-            config.capture_stderr = Some(true);
-        }
-        if matches.is_present("verbose") {
-            config.verbose = true;
-        }
-        if matches.is_present("passive") {
-            config.passive = true;
-        }
-        if matches.is_present("cache_failure") {
-            config.cache_failure = true;
-        }
-        if let Some(command) = matches.values_of("command_to_run") {
-            config.command_to_run = command.map(|x| x.to_owned()).collect();
-        }
-        if let Some(backend) = matches.value_of("backend") {
-            if backend == "s3" {
-                config.backend = Backend::S3;
+        for matches in match_sources {
+            if let Some(inputs) = matches.values_of("input") {
+                config.input_files.extend(inputs.map(|x| x.to_owned()));
+            }
+            if let Some(tools) = matches.values_of("tool") {
+                config.tool_tags.extend(tools.map(|x| x.to_owned()));
+            }
+            if let Some(outputs) = matches.values_of("output") {
+                config.output_files.extend(outputs.map(|x| x.to_owned()));
+            }
+            if matches.is_present("stdout") {
+                config.capture_stdout = Some(true);
+            }
+            if matches.is_present("stderr") {
+                config.capture_stderr = Some(true);
+            }
+            if matches.is_present("verbose") {
+                config.verbose = true;
+            }
+            if matches.is_present("passive") {
+                config.passive = true;
+            }
+            if matches.is_present("placebo") {
+                config.milestone = Milestone::Placebo;
+            }
+            if matches.is_present("cache_failure") {
+                config.cache_failure = true;
+            }
+            if let Some(command) = matches.values_of("command_to_run") {
+                config.command_to_run = command.map(|x| x.to_owned()).collect();
+            }
+            if let Some(backend) = matches.value_of("backend") {
+                if backend == "s3" {
+                    config.backend = Backend::S3;
+                }
+            }
+            if let Some(value) = matches.value_of("honeycomb_dataset") {
+                config.honeycomb_dataset = Some(value.into());
+            }
+            if let Some(value) = matches.value_of("honeycomb_token") {
+                config.honeycomb_token = Some(value.into());
+            }
+            if let Some(value) = matches.value_of("honeycomb_trace_id") {
+                config.honeycomb_trace_id = Some(value.into());
+            }
+            if let Some(value) = matches.value_of("honeycomb_parent_id") {
+                config.honeycomb_parent_id = Some(value.into());
+            }
+            if let Some(values) = matches.values_of("honeycomb_kv") {
+                config.honeycomb_kv.extend(values.map(|x| x.to_owned()));
+            }
+            if let Some(value) = matches.value_of("s3_bucket") {
+                config.s3_bucket = Some(value.into());
+            }
+            if let Some(value) = matches.value_of("s3_bucket_objects") {
+                config.s3_bucket_objects = Some(value.into());
+            }
+            if let Some(value) = matches.value_of("s3_region") {
+                config.s3_region = Some(value.into());
+            }
+            if let Some(value) = matches.value_of("s3_endpoint") {
+                config.s3_endpoint = Some(value.into());
+            }
+            if let Some(value) = matches.value_of("inputs_hash_var") {
+                config.inputs_hash_var = value.to_string();
             }
         }
-        if let Some(value) = matches.value_of("honeycomb_dataset") {
-            config.honeycomb_dataset = Some(value.into());
-        }
-        if let Some(value) = matches.value_of("honeycomb_token") {
-            config.honeycomb_token = Some(value.into());
-        }
-        if let Some(value) = matches.value_of("honeycomb_trace_id") {
-            config.honeycomb_trace_id = Some(value.into());
-        }
-        if let Some(value) = matches.value_of("honeycomb_parent_id") {
-            config.honeycomb_parent_id = Some(value.into());
-        }
-        if let Some(values) = matches.values_of("honeycomb_kv") {
-            config.honeycomb_kv.extend(values.map(|x| x.to_owned()));
-        }
-        if let Some(value) = matches.value_of("s3_bucket") {
-            config.s3_bucket = Some(value.into());
-        }
-        if let Some(value) = matches.value_of("s3_bucket_objects") {
-            config.s3_bucket_objects = Some(value.into());
-        }
-        if let Some(value) = matches.value_of("s3_region") {
-            config.s3_region = Some(value.into());
-        }
-        if let Some(value) = matches.value_of("s3_endpoint") {
-            config.s3_endpoint = Some(value.into());
-        }
-        if let Some(value) = matches.value_of("inputs_hash_var") {
-            config.inputs_hash_var = value.to_string();
-        }
+
         if config.command_to_run.is_empty() {
             bail!("The command to run was not specified");
         }
@@ -474,6 +483,16 @@ mod tests {
         let config = config.unwrap();
         assert_eq!(config.capsule_id.unwrap(), "my capsule id");
         assert_eq!(config.command_to_run[0], "/bin/echo");
+    }
+
+    #[test]
+    #[serial]
+    fn test_capsule_args_override() {
+        env::set_var("CAPSULE_ARGS", "-c 'my capsule id' -- /bin/echo");
+        let config = Config::new(vec!["capsule", "-c", "my other capsule id", "--", "/bin/echo"], None, None);
+        env::remove_var("CAPSULE_ARGS");
+        let config = config.unwrap();
+        assert_eq!(config.capsule_id.unwrap(), "my other capsule id");
     }
 
     #[test]
