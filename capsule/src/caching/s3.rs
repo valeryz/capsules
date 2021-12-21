@@ -64,10 +64,6 @@ impl S3Backend {
     }
 }
 
-// TODO(valeryz): the implementaiton logic of read_files/write_files etc. has too many things that have little
-// to do with S3, but rather reflect capsule logic. This should be refactored - methods should be extracted
-// and moved to capsule.rs.
-
 #[async_trait]
 impl CachingBackend for S3Backend {
     fn name(&self) -> &'static str {
@@ -131,7 +127,7 @@ impl CachingBackend for S3Backend {
             key: self.normalize_object_key(item_hash),
             body: Some(rusoto_core::ByteStream::new(byte_stream)),
             content_length: Some(content_length as i64),
-            // Two weeks
+            // Two weeks - content addresable storage doesn't change, so we can cache for long.
             cache_control: Some(CacheDirective::MaxAge(2_592_000).to_string()),
             content_type: Some("application/octet-stream".to_owned()),
             ..Default::default()
@@ -153,8 +149,7 @@ impl CachingBackend for S3Backend {
         let request = PutObjectRequest {
             bucket: self.bucket.clone(),
             body: Some(data.into()),
-            // Two weeks
-            cache_control: Some(CacheDirective::MaxAge(1_296_000).to_string()),
+            cache_control: Some(CacheDirective::NoCache.to_string()),
             content_length: Some(data_len as i64),
             content_type: Some("application/octet-stream".to_owned()),
             key,
