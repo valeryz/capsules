@@ -539,7 +539,7 @@ mod tests {
         let out_file_1 = tmp_dir.path().join("xx");
         let config = Config::new(
             [
-                "capsule",
+                "capsule",b
                 "-c",
                 "wtf",
                 "-i",
@@ -799,10 +799,13 @@ mod tests {
 
     #[tokio::test]
     #[serial]
-    // Here the logic changed. Once we get a cache hit where the file is absent,
-    // and we have a pattern where the file is currently present, we should treat
-    // it as pattern mismatch, and ignore the cache hit. Before 0.2.9, it would
-    // acutally remove the file on a cache hit.
+    // Here the logic changed. OutputBundles contain the information about whether an output file
+    // was present when the cache entry was created.  Before 0.2.9, once we had cache hit with the
+    // output file absent, capsule would try to make sure that the file is removed. In reality an
+    // absent file is usually a miconfiguration. Fixing that misconfiguration should then fix the
+    // job and caching, but with the old logic it would just get cache hits with no output.
+    // So this test actuall checks that the file is *not* removed on cache hit with a file 'not present',
+    // and that the cache hit is ignored.
     async fn test_cache_file_removal() {
         let tmp_dir = TempDir::new().unwrap();
         let backend = TestBackend::new("wtf", TestBackendConfig::default());
