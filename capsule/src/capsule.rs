@@ -5,7 +5,6 @@ use futures::future::try_join_all;
 use futures::join;
 use glob::glob;
 use indoc::indoc;
-use std::io::ErrorKind;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
@@ -177,20 +176,6 @@ impl<'a> Capsule<'a> {
 
     /// Download all output files from the caching backend, and place them into destination paths.
     async fn download_files(&self, outputs: &OutputHashBundle) -> Result<()> {
-        // First, try removing files that should not be present, and bail out if we fail with that,
-        // before starting any S3 downloads.
-        for (item, _) in &outputs.hash_details {
-            if let Output::File(ref fileoutput) = item {
-                if !fileoutput.present {
-                    // If the file should not be present, let's remove it, ignoring ENOENT.
-                    if let Err(e) = std::fs::remove_file(&fileoutput.filename) {
-                        if !matches!(e.kind(), ErrorKind::NotFound) {
-                            return Err(e.into());
-                        }
-                    }
-                }
-            }
-        }
         // Now download all files that should be present.
         let mut all_files_futures = Vec::new();
         for (item, item_hash) in &outputs.hash_details {
@@ -814,6 +799,10 @@ mod tests {
 
     #[tokio::test]
     #[serial]
+    // Here the logic changed. Once we get a cache hit where the file is absent,
+    // and we have a pattern where the file is currently present, we should treat
+    // it as pattern mismatch, and ignore the cache hit. Before 0.2.9, it would
+    // acutally remove the file on a cache hit.
     async fn test_cache_file_removal() {
         let tmp_dir = TempDir::new().unwrap();
         let backend = TestBackend::new("wtf", TestBackendConfig::default());
@@ -851,10 +840,10 @@ mod tests {
         let code = capsule.run_capsule(&mut program_run).await.unwrap();
         assert_eq!(code, 0);
         // The 2nd time the program should NOT run.
-        assert!(!program_run.load(Ordering::SeqCst));
+        assert!(program_run.load(Ordering::SeqCst));
 
         // Because the out file was not present when the run was cached, we should expect it
         // to be removed.
-        assert!(!out_file.exists());
+        assert!(out_file.exists());
     }
 }
