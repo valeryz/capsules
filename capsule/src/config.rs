@@ -438,12 +438,14 @@ impl Config {
             })
             .collect::<Result<Vec<glob::Pattern>, _>>()
             .with_context(|| "Invalid output file pattern")?;
+        let mut pattern_has_matches = vec![false; patterns.len()];
         // For each given path, try to find at least one match in the patterns.
         for path in paths {
             let mut has_match = false;
-            for pattern in &patterns {
+            for (i, pattern) in patterns.iter().enumerate() {
                 if pattern.matches_path(path) {
                     has_match = true;
+                    pattern_has_matches[i] = true;
                     break;
                 }
             }
@@ -451,7 +453,7 @@ impl Config {
                 return Ok(false);
             }
         }
-        Ok(true)
+        Ok(pattern_has_matches.iter().all(|&x| x))
     }
 }
 
@@ -489,7 +491,11 @@ mod tests {
     #[serial]
     fn test_capsule_args_override() {
         env::set_var("CAPSULE_ARGS", "-c 'my capsule id' -- /bin/echo");
-        let config = Config::new(vec!["capsule", "-c", "my other capsule id", "--", "/bin/echo"], None, None);
+        let config = Config::new(
+            vec!["capsule", "-c", "my other capsule id", "--", "/bin/echo"],
+            None,
+            None,
+        );
         env::remove_var("CAPSULE_ARGS");
         let config = config.unwrap();
         assert_eq!(config.capsule_id.unwrap(), "my other capsule id");
@@ -735,5 +741,37 @@ mod tests {
             config.get_honeycomb_kv().unwrap(),
             vec![("foo".to_owned(), "".to_owned()), ("bar".to_owned(), "".to_owned())]
         );
+    }
+
+    #[test]
+    #[serial]
+    fn test_outputs_match() {
+        let config = Config::new(
+            vec![
+                "placebo",
+                "-c",
+                "my_capsule",
+                "-o",
+                "build-out/update-img/update-img-test.tar.gz",
+                "--",
+                "/bin/echo",
+            ],
+            None,
+            None,
+        )
+        .unwrap();
+        assert!(config
+            .outputs_match(vec![PathBuf::from("build-out/update-img/update-img-test.tar.gz").as_path()].into_iter())
+            .unwrap());
+        assert!(!config
+            .outputs_match(
+                vec![
+                    PathBuf::from("build-out/update-img/update-img.tar.gz").as_path(),
+                    PathBuf::from("build-out/update-img/update-img-test.tar.gz").as_path()
+                ]
+                .into_iter()
+            )
+            .unwrap());
+        assert!(!config.outputs_match(vec![].into_iter()).unwrap());
     }
 }
