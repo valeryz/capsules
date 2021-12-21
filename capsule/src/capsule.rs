@@ -539,7 +539,7 @@ mod tests {
         let out_file_1 = tmp_dir.path().join("xx");
         let config = Config::new(
             [
-                "capsule",b
+                "capsule",
                 "-c",
                 "wtf",
                 "-i",
