@@ -7,18 +7,28 @@ use cargo::core::shell::Shell;
 
 use cargo_util;
 
+
 fn exec(config: &mut Config) -> CliResult {
     let arg_matches = App::new("cargo-capsule-test")
         .version(env!("CARGO_PKG_VERSION"))
         .arg(Arg::with_name("wtf").help("WTF is that arg"));
 
-    let args = arg_matches.get_matches();
+    let args = arg_matches.get_matches_safe()?;
     let ws = args.workspace(&config)?;
+
+    println!("Workspace: \n{:?}", ws);
+
+    let mut compile_opts = args.compile_options(
+        config,
+        CompileMode::Test,
+        Some(&ws),
+        ProfileChecking::Custom,
+    )?;
 
     let ops = ops::TestOptions {
         no_run: false,
         no_fail_fast: false,
-        compile_opts: ops::CompileOptions::new(&config, CompileMode::Test)?,
+        compile_opts: compile_opts,
     };
 
     let test_args: Vec<&'static str> = vec![];
@@ -47,7 +57,6 @@ fn main() {
             cargo::exit_with_error(e.into(), &mut shell)
         }
     };
-
 
     let result = exec(&mut config);
     match result {
