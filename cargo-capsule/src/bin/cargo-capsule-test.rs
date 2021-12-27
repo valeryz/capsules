@@ -13,6 +13,7 @@ use cargo_util;
 
 
 fn exec(config: &mut Config) -> CliResult {
+    // TODO: accept compilation options compatible with cargo test
     let arg_matches = App::new("cargo-capsule-test")
         .version(env!("CARGO_PKG_VERSION"))
         .arg(Arg::with_name("wtf").help("WTF is that arg"));
@@ -34,7 +35,13 @@ fn exec(config: &mut Config) -> CliResult {
     let interner = UnitInterner::new();
     let BuildContext { ref roots, ref unit_graph, .. } = ops::create_bcx(&ws, &compile_opts, &interner)?;
 
-    // let _ = unit_graph::emit_serialized_unit_graph(&bcx.roots, &bcx.unit_graph, ws.config())?;
+    let _ = unit_graph::emit_serialized_unit_graph(&roots, &unit_graph, ws.config())?;
+
+    // Look at each 'root'. For each root, find all its transitive deps.
+    // For the transitive deps that are outside the workspace, represent them as tool tags.
+    // for the deps that are inside the workspace, find all their sources, and include as -i.
+    // Call cargo test -p 'target' under capsule with all these inputs.
+    
     let empty_deps = Vec::new();
     for root in roots {
         let mut deps: Vec<_> = unit_graph.get(root).unwrap_or(&empty_deps).iter().map(|unit_dep| &unit_dep.unit).collect();
@@ -61,11 +68,6 @@ fn exec(config: &mut Config) -> CliResult {
         
     }
 
-    // Look at each 'root'. For each root, find all its transitive deps.
-    // For the transitive deps that are outside the workspace, represent them as tool tags.
-    // for the deps that are inside the workspace, find all their sources, and include as -i.
-    // Call cargo test -p 'target' under capsule with all these inputs.
-    
     let ops = ops::TestOptions {
         no_run: false,
         no_fail_fast: false,
