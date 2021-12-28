@@ -64,6 +64,7 @@ impl OutputHashBundle {
 pub struct InputOutputBundle {
     pub inputs: InputHashBundle,
     pub outputs: OutputHashBundle,
+    pub source: String,
 }
 
 /// Output set is the set of all process outputs.
