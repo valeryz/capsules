@@ -1,11 +1,12 @@
-use std::collections::HashSet;
+use std::collections::hash_map::Entry;
+use std::collections::{HashMap, HashSet};
 use std::env;
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::os::unix::prelude::OsStrExt;
 use std::process::Command;
 
 use anyhow::{anyhow, Context, Result};
-use cargo::core::compiler::{BuildContext, UnitInterner};
+use cargo::core::compiler::{unit_graph, BuildContext, UnitInterner};
 use cargo::core::shell::Shell;
 use cargo::core::Source;
 use cargo::ops;
@@ -120,6 +121,10 @@ fn args_hash(args: &[OsString]) -> String {
     format!("{:x}", acc.finalize())
 }
 
+fn debug_enabled() -> bool {
+    env::var_os("CARGO_CAPSULE_DEBUG").unwrap_or_default() != "0"
+}
+
 fn exec(config: &mut Config) -> CliResult {
     let app = create_clap_app();
     let args = app.get_matches_safe()?;
@@ -132,7 +137,9 @@ fn exec(config: &mut Config) -> CliResult {
 
     // let test_args: Vec<&'static str> = vec![];
 
-    // println!("Workspace: \n{:?}\n", ws);
+    if debug_enabled() {
+        println!("Workspace: \n{:?}\n", ws);
+    }
 
     let interner = UnitInterner::new();
 
@@ -144,10 +151,17 @@ fn exec(config: &mut Config) -> CliResult {
         ..
     } = ops::create_bcx(&ws, &compile_opts, &interner)?;
 
-    // let _ = unit_graph::emit_serialized_unit_graph(&roots, &unit_graph, ws.config())?;
+    if debug_enabled() {
+        let _ = unit_graph::emit_serialized_unit_graph(&roots, &unit_graph, ws.config())?;
+    }
 
-    // Look at each 'root'. For each root, find all its transitive deps.
+    type InputSpec = HashSet<(String, String)>;
+
+    let mut package_inputs = HashMap::<String, InputSpec>::new();
     let empty_deps = Vec::new();
+    // Look at each 'root'. For each root, find all its transitive
+    // deps, and add it to the package input spec for the package
+    // referred to by this root.
     for root in roots {
         let mut deps: Vec<_> = unit_graph
             .get(root)
@@ -160,7 +174,7 @@ fn exec(config: &mut Config) -> CliResult {
         // For the transitive deps that are outside the workspace, represent them as tool tags.
         // for the deps that are inside the workspace, find all their sources, and include as -i.
         // Call cargo test -p 'target' under capsule with all these inputs.
-        let inputs: HashSet<(String, String)> = deps
+        let inputs: InputSpec = deps
             .iter()
             .map(|dep| -> Result<Vec<(String, String)>> {
                 if dep.is_local() {
@@ -183,27 +197,45 @@ fn exec(config: &mut Config) -> CliResult {
             .flatten()
             .collect();
 
-        // Modify capsule-id to include a specific root.
-        let capsule_id = format!("{}-{}", capsule_id, root.pkg);
-        let pass_args_tool_tag = ["-t".to_string(), args_hash(&pass_args)];
-        let capsule_args = inputs
-            .iter()
-            .map(|(a, b)| [a, b])
-            .flatten()
-            .chain(pass_args_tool_tag.iter());
-        // println!(
-        //     "Inputs for {:?} : {:?}\n\n",
-        //     root,
-        //     inputs.iter().flattenmap(|(a, b)| format!("{} {} ", a, b)).collect::<Vec<_>>()
-        // );
-        Command::new("capsule")
+        match package_inputs.entry(root.pkg.name().to_string()) {
+            Entry::Occupied(mut e) => e.get_mut().extend(inputs),
+            Entry::Vacant(e) => {
+                e.insert(inputs);
+                ()
+            }
+        }
+    }
+
+    for (package, inputs) in package_inputs {
+        // Modify capsule-id to include a specific root + hash of the args.
+        let capsule_id = format!("{}-{}", capsule_id, package);
+        let capsule_args = inputs.iter().map(|(a, b)| [a, b]).flatten();
+
+        if debug_enabled() {
+            println!(
+                "Inputs for {:?} : {:?}\n\n",
+                package,
+                inputs.iter().map(|(a, b)| format!("{} {} ", a, b)).collect::<Vec<_>>()
+            );
+        }
+
+        // Call 'cargo test' via capsule for the given packged. If
+        // nothing changed for this package, it will be cached.
+        let pass_args_hash = args_hash(&pass_args);
+        let mut command = Command::new("capsule");
+        command
             .arg("-c")
             .arg(capsule_id)
             .args(capsule_args)
+            .args(["-t", &pass_args_hash])
             .arg("--")
             .arg("cargo")
             .arg("test")
-            .args(&pass_args)
+            .args(["--package", &package])
+            .args(&pass_args);
+
+        println!("capsule {}", shell_words::join(command.get_args().map(OsStr::to_string_lossy)));
+        command
             .spawn()
             .context("Spawning cargo test")?
             .wait()
@@ -211,31 +243,10 @@ fn exec(config: &mut Config) -> CliResult {
     }
 
     Ok(())
-
-    // let ops = ops::TestOptions {
-    //     no_run: false,
-    //     no_fail_fast: false,
-    //     compile_opts: compile_opts,
-    // };
-
-    // let err = ops::run_tests(&ws, &ops, &test_args)?;
-
-    // match err {
-    //     None => Ok(()),
-    //     Some(err) => {
-    //         let context = anyhow::format_err!("{}", err.hint(&ws, &ops.compile_opts));
-    //         let e = match err.code {
-    //             // Don't show "process didn't exit successfully" for simple errors.
-    //             Some(i) if cargo_util::is_simple_exit_code(i) => CliError::new(context, i),
-    //             Some(i) => CliError::new(Error::from(err).context(context), i),
-    //             None => CliError::new(Error::from(err).context(context), 101),
-    //         };
-    //         Err(e.into())
-    //     }
-    // }
 }
 
 fn main() {
+    // Create
     let mut config = match config::Config::default() {
         Ok(cfg) => cfg,
         Err(e) => {
