@@ -546,6 +546,8 @@ mod tests {
                 "capsule",
                 "-c",
                 "wtf",
+                "-j",
+                "https://wtfjob.org",
                 "-i",
                 "/bin/echo",
                 "-o",
@@ -565,6 +567,10 @@ mod tests {
         let code = capsule.run_capsule(&mut program_run).await.unwrap();
         assert_eq!(code, 0);
         assert!(program_run.load(Ordering::SeqCst));
+
+        let inputs = capsule.read_inputs().unwrap();
+        let lookup_result = backend.lookup(&inputs).await.unwrap();
+        assert_eq!(lookup_result.unwrap().source, "https://wtfjob.org");
 
         std::fs::remove_file(&out_file_1).unwrap();
 

@@ -330,7 +330,8 @@ impl Config {
         for matches in &match_sources {
             if let Some(capsule_id) = matches.value_of("capsule_id") {
                 config.capsule_id = Some(capsule_id.to_owned());
-            } else if let Some(capsule_job) = matches.value_of("capsule_job") {
+            }
+            if let Some(capsule_job) = matches.value_of("capsule_job") {
                 config.capsule_job = Some(capsule_job.to_owned());
             }
         }
