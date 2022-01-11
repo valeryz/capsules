@@ -137,10 +137,11 @@ impl CachingBackend for S3Backend {
     }
 
     /// Write hashes of inputs and outputs into S3, keyed by hashes of inputs.
-    async fn write(&self, inputs: &InputHashBundle, outputs: &OutputHashBundle) -> Result<()> {
+    async fn write(&self, inputs: &InputHashBundle, outputs: &OutputHashBundle, source: String) -> Result<()> {
         let io_bundle = InputOutputBundle {
             inputs: inputs.clone(),
             outputs: outputs.clone(),
+            source,
         };
         let key = self.normalize_key(&io_bundle.inputs.hash);
         // Prepare data for S3 writing.

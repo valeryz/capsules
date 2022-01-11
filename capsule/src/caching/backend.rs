@@ -17,7 +17,7 @@ pub trait CachingBackend {
     async fn lookup(&self, inputs: &InputHashBundle) -> Result<Option<InputOutputBundle>>;
 
     /// Write a cache entry keyed by input, containing hashes of outputs.
-    async fn write(&self, inputs: &InputHashBundle, outputs: &OutputHashBundle) -> Result<()>;
+    async fn write(&self, inputs: &InputHashBundle, outputs: &OutputHashBundle, source: String) -> Result<()>;
 
     /// Download a file addressed by item_hash from the backend storage, and return an AsyncRead handle
     /// that allows the caller to keep asynchrnously fetching the content.
@@ -31,7 +31,6 @@ pub trait CachingBackend {
         file: Pin<Box<dyn AsyncRead + Send>>,
         content_length: u64,
     ) -> Result<()>;
-
 }
 
 impl fmt::Debug for dyn CachingBackend {

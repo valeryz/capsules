@@ -11,7 +11,7 @@ use std::process::ExitStatus;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tempfile::NamedTempFile;
 use tokio::io::AsyncWriteExt;
-use tokio::process::{Command};
+use tokio::process::Command;
 
 use crate::caching::backend::CachingBackend;
 use crate::config::{Config, Milestone};
@@ -37,6 +37,10 @@ impl<'a> Capsule<'a> {
 
     pub fn capsule_id(&self) -> String {
         self.config.capsule_id.as_ref().cloned().unwrap()
+    }
+
+    pub fn capsule_job(&self) -> String {
+        self.config.capsule_job.as_ref().cloned().unwrap_or_default()
     }
 
     pub fn read_inputs(&self) -> Result<InputHashBundle> {
@@ -153,7 +157,7 @@ impl<'a> Capsule<'a> {
                 }
 
                 let logger_fut = self.logger.log(inputs, &outputs, false, non_determinism);
-                let cache_write_fut = self.caching_backend.write(inputs, &outputs);
+                let cache_write_fut = self.caching_backend.write(inputs, &outputs, self.capsule_job());
                 let cache_writefiles_fut = self.upload_files(&outputs);
                 let (logger_result, cache_result, cache_files_result) =
                     join!(logger_fut, cache_write_fut, cache_writefiles_fut);
@@ -225,7 +229,7 @@ impl<'a> Capsule<'a> {
         Ok(())
     }
 
-    const DEFAULT_EXIT_CODE: i32 = 1;  // A catchall error code with no special meaning.
+    const DEFAULT_EXIT_CODE: i32 = 1; // A catchall error code with no special meaning.
 
     pub async fn run_capsule(&self, program_run: &mut AtomicBool) -> Result<i32> {
         let inputs = self.read_inputs()?;
@@ -573,6 +577,44 @@ mod tests {
         assert!(!program_run.load(Ordering::SeqCst));
 
         assert!(out_file_1.is_file());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_cache_hit_job_id() {
+        let tmp_dir = TempDir::new().unwrap();
+        let backend = TestBackend::new("wtf", TestBackendConfig::default());
+        let out_file_1 = tmp_dir.path().join("xxyy");
+        let config = Config::new(
+            [
+                "capsule",
+                "-c",
+                "wtf",
+                "-j",
+                "https://wtfjob.org",
+                "-i",
+                "/bin/echo",
+                "-o",
+                out_file_1.to_str().unwrap(),
+                "--",
+                "/bin/bash",
+                "-c",
+                &format!("echo '123' > {}", out_file_1.to_str().unwrap()),
+            ]
+            .iter(),
+            None,
+            None,
+        )
+        .unwrap();
+        let capsule = Capsule::new(&config, &backend, &Dummy);
+        let mut program_run = AtomicBool::new(false);
+        let code = capsule.run_capsule(&mut program_run).await.unwrap();
+        assert_eq!(code, 0);
+        assert!(program_run.load(Ordering::SeqCst));
+
+        let inputs = capsule.read_inputs().unwrap();
+        let lookup_result = backend.lookup(&inputs).await.unwrap();
+        assert_eq!(lookup_result.unwrap().source, "https://wtfjob.org");
     }
 
     #[tokio::test]
