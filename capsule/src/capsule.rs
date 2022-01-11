@@ -546,6 +546,50 @@ mod tests {
                 "capsule",
                 "-c",
                 "wtf",
+                "-i",
+                "/bin/echo",
+                "-o",
+                out_file_1.to_str().unwrap(),
+                "--",
+                "/bin/bash",
+                "-c",
+                &format!("echo '123' > {}", out_file_1.to_str().unwrap()),
+            ]
+            .iter(),
+            None,
+            None,
+        )
+        .unwrap();
+        let capsule = Capsule::new(&config, &backend, &Dummy);
+        let mut program_run = AtomicBool::new(false);
+        let code = capsule.run_capsule(&mut program_run).await.unwrap();
+        assert_eq!(code, 0);
+        assert!(program_run.load(Ordering::SeqCst));
+
+        std::fs::remove_file(&out_file_1).unwrap();
+
+        // 2nd should be cached, and command not run.
+        let capsule = Capsule::new(&config, &backend, &Dummy);
+        let mut program_run = AtomicBool::new(false);
+        let code = capsule.run_capsule(&mut program_run).await.unwrap();
+        assert_eq!(code, 0);
+        // The 2nd time the program should not be run.
+        assert!(!program_run.load(Ordering::SeqCst));
+
+        assert!(out_file_1.is_file());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_cache_hit_job_id() {
+        let tmp_dir = TempDir::new().unwrap();
+        let backend = TestBackend::new("wtf", TestBackendConfig::default());
+        let out_file_1 = tmp_dir.path().join("xxyy");
+        let config = Config::new(
+            [
+                "capsule",
+                "-c",
+                "wtf",
                 "-j",
                 "https://wtfjob.org",
                 "-i",
@@ -571,18 +615,6 @@ mod tests {
         let inputs = capsule.read_inputs().unwrap();
         let lookup_result = backend.lookup(&inputs).await.unwrap();
         assert_eq!(lookup_result.unwrap().source, "https://wtfjob.org");
-
-        std::fs::remove_file(&out_file_1).unwrap();
-
-        // 2nd should be cached, and command not run.
-        let capsule = Capsule::new(&config, &backend, &Dummy);
-        let mut program_run = AtomicBool::new(false);
-        let code = capsule.run_capsule(&mut program_run).await.unwrap();
-        assert_eq!(code, 0);
-        // The 2nd time the program should not be run.
-        assert!(!program_run.load(Ordering::SeqCst));
-
-        assert!(out_file_1.is_file());
     }
 
     #[tokio::test]
