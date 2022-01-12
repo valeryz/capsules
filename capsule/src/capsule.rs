@@ -246,9 +246,10 @@ impl<'a> Capsule<'a> {
         if let Some(ref lookup_result) = lookup_result {
             let log_cache_hit = |msg: &str| {
                 println!(
-                    "Cache hit on {} from {}: {}",
+                    "Cache hit on {} from {} ({}): {}",
                     self.capsule_id(),
                     lookup_result.source,
+                    lookup_result.inputs.hash,
                     msg
                 )
             };
