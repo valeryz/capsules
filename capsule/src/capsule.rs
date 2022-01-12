@@ -244,23 +244,25 @@ impl<'a> Capsule<'a> {
         }
         let lookup_result = self.caching_backend.lookup(&inputs).await?;
         if let Some(ref lookup_result) = lookup_result {
+            let log_cache_hit = |msg: &str| {
+                println!(
+                    "Cache hit on {} from {}: {}",
+                    self.capsule_id(),
+                    lookup_result.source,
+                    msg
+                )
+            };
             // We have a cache hit, but in case we are in placebo mode, or we have cached a failure,
             // we should still not use the cache. Let's figure this out while printing the solution.
             let mut use_cache = true;
             if self.config.milestone == Milestone::Placebo {
-                println!(
-                    "Cache hit on {}: ignoring and proceeding with execution.",
-                    self.capsule_id()
-                );
+                log_cache_hit("ignoring and proceeding with execution");
                 use_cache = false
             } else {
                 if !self.config.cache_failure {
                     // If result code from the command is not 0
                     if lookup_result.outputs.result_code().unwrap_or(1) != 0 {
-                        println!(
-                            "Cache hit on {}: cached failure, proceeding with execution.",
-                            self.capsule_id()
-                        );
+                        log_cache_hit("cached failure, proceeding with execution");
                         use_cache = false;
                     }
                 }
@@ -279,10 +281,7 @@ impl<'a> Capsule<'a> {
                     let iter = lookup_result.outputs.hash_details.iter().filter_map(predicate);
                     // If anything doesn't match, don't use the cache!
                     if !self.config.outputs_match(iter)? {
-                        eprintln!(
-                            "Cache hit on {}: mismatch in output patterns, proceeding with execution",
-                            self.capsule_id()
-                        );
+                        log_cache_hit("mismatch in output patterns, proceeding with execution");
                         use_cache = false;
                     }
                 }
@@ -291,7 +290,7 @@ impl<'a> Capsule<'a> {
             if use_cache {
                 match self.download_files(&lookup_result.outputs).await {
                     Ok(_) => {
-                        println!("Cache hit on {}: success.", self.capsule_id());
+                        log_cache_hit("success");
                         // Log successful cached results.
                         self.logger
                             .log(&inputs, &lookup_result.outputs, true, false)
@@ -302,11 +301,7 @@ impl<'a> Capsule<'a> {
                         return Ok(lookup_result.outputs.result_code().unwrap_or(Self::DEFAULT_EXIT_CODE));
                     }
                     Err(e) => {
-                        println!(
-                            "Cache hit on {}: failed to retrieve from the cache: {}",
-                            self.capsule_id(),
-                            e
-                        );
+                        log_cache_hit(&format!("failed to retrieve from the cache: {}", e));
                     }
                 }
             }
