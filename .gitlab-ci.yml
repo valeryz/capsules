@@ -29,7 +29,7 @@ build-release:
   tags:
     - shared
   script: |
-    cargo build --package capsule --release
+    cargo build --package capsule --package cargo-capsule --release
   artifacts:
     paths:
       - ./target/release/capsule
