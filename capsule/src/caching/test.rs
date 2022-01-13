@@ -61,7 +61,7 @@ impl CachingBackend for TestBackend {
         }
     }
 
-    async fn write(&self, inputs: &InputHashBundle, outputs: &OutputHashBundle) -> Result<()> {
+    async fn write(&self, inputs: &InputHashBundle, outputs: &OutputHashBundle, source: String) -> Result<()> {
         if self.test_config.failing_write {
             Err(anyhow!("Failed to write key"))
         } else {
@@ -72,6 +72,7 @@ impl CachingBackend for TestBackend {
                 InputOutputBundle {
                     inputs: inputs.clone(),
                     outputs: outputs.clone(),
+                    source,
                 },
             );
             Ok(())

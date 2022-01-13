@@ -49,6 +49,9 @@ pub struct Config {
     pub capsule_id: Option<String>,
 
     #[serde(default)]
+    pub capsule_job: Option<String>,
+
+    #[serde(default)]
     pub input_files: Vec<String>,
 
     #[serde(default)]
@@ -152,6 +155,14 @@ impl Config {
                     .help("The ID of the capsule (usually a target path)")
                     .short('c')
                     .long("capsule_id")
+                    .takes_value(true)
+                    .multiple_occurrences(false),
+            )
+            .arg(
+                Arg::new("capsule_job")
+                    .help("The ID of the capsule job")
+                    .short('j')
+                    .long("capsule_job")
                     .takes_value(true)
                     .multiple_occurrences(false),
             )
@@ -319,6 +330,9 @@ impl Config {
         for matches in &match_sources {
             if let Some(capsule_id) = matches.value_of("capsule_id") {
                 config.capsule_id = Some(capsule_id.to_owned());
+            }
+            if let Some(capsule_job) = matches.value_of("capsule_job") {
+                config.capsule_job = Some(capsule_job.to_owned());
             }
         }
 
