@@ -131,3 +131,18 @@ fn test_cache_expiration() {
     // Verify that the second time the side effect is present
     assert!(side_effect.exists());
 }
+
+#[test]
+fn test_inputs_hash() {
+    let setup_data = common::setup(); // RAII - clean up on destruction.
+    let input = setup_data.path("input.txt");
+    std::fs::write(&input, "input data").unwrap();
+    let output = assert_cmd::Command::cargo_bin("capsule")
+        .expect("Couldn't find capsule target")
+        .args(["--inputs_hash", "-t", "foo", "-i", input.to_str().unwrap()])
+        .output()
+        .expect("Couldn't execute capsule");
+
+    assert!(output.status.success());
+    assert_eq!(output.stdout, b"6683fee73b2d88cd8414b00fdc6ea103e6e3d47f23dd8d67379b5be41fc72273");
+}

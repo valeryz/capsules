@@ -233,6 +233,13 @@ impl<'a> Capsule<'a> {
 
     pub async fn run_capsule(&self, program_run: &mut AtomicBool) -> Result<i32> {
         let inputs = self.read_inputs()?;
+
+        // If we only need to output the hash, just do it and quit.
+        if self.config.inputs_hash_output {
+            print!("{}", inputs.hash);
+            return Ok(0)
+        }
+
         // In passive mode, skip everything, except reading inputs as we still want to fill
         // CAPSULE_INPUTS_HASH with data about the capsule inputs.
         if self.config.passive {

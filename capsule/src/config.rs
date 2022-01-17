@@ -99,6 +99,9 @@ pub struct Config {
 
     #[serde(default)]
     pub inputs_hash_var: String,
+
+    #[serde(default)]
+    pub inputs_hash_output: bool,
 }
 
 impl Config {
@@ -297,6 +300,12 @@ impl Config {
                     .takes_value(true)
                     .default_value("CAPSULE_INPUTS_HASH"),
             )
+            .arg(
+                Arg::new("inputs_hash")
+                    .long("inputs_hash")
+                    .help("Output the hash value to stdout, no cache lookup, storage, or execution")
+                    .takes_value(false),
+            )
             .arg(Arg::new("command_to_run").last(true));
 
         // Look at the first element of command line, to find and remember argv[0].
@@ -327,12 +336,16 @@ impl Config {
             Milestone::BluePill
         };
 
+        // First, we look at .toml files, then we merge in CAPSULE_ARGS and command line.
+        // But, for capsule_id, we must look at command line first, as .toml files might not have
+        // one, and we must choose a section based on capsule_id. Other options could be examined
+        // later.
         for matches in &match_sources {
             if let Some(capsule_id) = matches.value_of("capsule_id") {
                 config.capsule_id = Some(capsule_id.to_owned());
-            }
-            if let Some(capsule_job) = matches.value_of("capsule_job") {
-                config.capsule_job = Some(capsule_job.to_owned());
+            } else if matches.is_present("inputs_hash") {
+                // For --inputs_hash, capsule_id doesn't matter, so let's just silence the check below.
+                config.capsule_id = Some("-".to_owned());
             }
         }
 
@@ -378,11 +391,17 @@ impl Config {
             if matches.is_present("passive") {
                 config.passive = true;
             }
+            if matches.is_present("inputs_hash") {
+                config.inputs_hash_output = true;
+            }
             if matches.is_present("placebo") {
                 config.milestone = Milestone::Placebo;
             }
             if matches.is_present("cache_failure") {
                 config.cache_failure = true;
+            }
+            if let Some(capsule_job) = matches.value_of("capsule_job") {
+                config.capsule_job = Some(capsule_job.to_owned());
             }
             if let Some(command) = matches.values_of("command_to_run") {
                 config.command_to_run = command.map(|x| x.to_owned()).collect();
@@ -424,7 +443,7 @@ impl Config {
             }
         }
 
-        if config.command_to_run.is_empty() {
+        if config.command_to_run.is_empty() && !config.inputs_hash_output {
             bail!("The command to run was not specified");
         }
 
