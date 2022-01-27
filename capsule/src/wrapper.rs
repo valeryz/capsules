@@ -12,7 +12,7 @@ where
 {
     let program_cstring = CString::new(program_name)?;
     let args: Vec<String> = args.collect();
-    println!("Fallback exec'ing {:?}", args);
+    eprintln!("Fallback exec'ing {:?}", args);
     let arg_cstrings = args.into_iter().map(CString::new).collect::<Result<Vec<_>, _>>()?;
 
     match execvp(&program_cstring, &arg_cstrings) {
