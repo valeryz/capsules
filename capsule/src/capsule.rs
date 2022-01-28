@@ -23,34 +23,23 @@ use crate::observability::logger::Logger;
 static USAGE: &str = "Usage: capsule <capsule arguments ...> -- command [<arguments>]";
 
 #[cfg(not(test))]
-const TIMEOUT_LOOKUP_MILLIS: u64 = 10_000;
+mod timeouts {
+    pub(super) const TIMEOUT_LOOKUP_MILLIS: u64 = 10_000;
+    pub(super) const TIMEOUT_LOGGING_MILLIS: u64 = 10_000;
+    pub(super) const TIMEOUT_CACHE_WRITE_MILLIS: u64 = 10_000;
+    pub(super) const TIMEOUT_UPLOAD_MILLIS: u64 = 180_000;
+    pub(super) const TIMEOUT_DOWNLOAD_MILLIS: u64 = 180_000;
+}
 
+// Timeout constants to be used in unit tests.
 #[cfg(test)]
-const TIMEOUT_LOOKUP_MILLIS: u64 = 200;
-
-#[cfg(not(test))]
-const TIMEOUT_LOGGING_MILLIS: u64 = 10_000;
-
-#[cfg(test)]
-const TIMEOUT_LOGGING_MILLIS: u64 = 200;
-
-#[cfg(not(test))]
-const TIMEOUT_CACHE_WRITE_MILLIS: u64 = 10_000;
-
-#[cfg(test)]
-const TIMEOUT_CACHE_WRITE_MILLIS: u64 = 200;
-
-#[cfg(not(test))]
-const TIMEOUT_UPLOAD_MILLIS: u64 = 180_000;
-
-#[cfg(test)]
-const TIMEOUT_UPLOAD_MILLIS: u64 = 200;
-
-#[cfg(not(test))]
-const TIMEOUT_DOWNLOAD_MILLIS: u64 = 180_000;
-
-#[cfg(test)]
-const TIMEOUT_DOWNLOAD_MILLIS: u64 = 200;
+mod timeouts {
+    pub(super) const TIMEOUT_LOOKUP_MILLIS: u64 = 200;
+    pub(super) const TIMEOUT_LOGGING_MILLIS: u64 = 200;
+    pub(super) const TIMEOUT_CACHE_WRITE_MILLIS: u64 = 200;
+    pub(super) const TIMEOUT_UPLOAD_MILLIS: u64 = 200;
+    pub(super) const TIMEOUT_DOWNLOAD_MILLIS: u64 = 200;
+}
 
 pub struct Capsule<'a> {
     config: &'a Config,
@@ -191,15 +180,15 @@ impl<'a> Capsule<'a> {
                 // Concurrently write the log, cache entry and cache objects (files).
                 // Timeouts are applied to each operation.
                 let logger_fut = time::timeout(
-                    Duration::from_millis(TIMEOUT_LOGGING_MILLIS),
+                    Duration::from_millis(timeouts::TIMEOUT_LOGGING_MILLIS),
                     self.logger.log(inputs, &outputs, false, non_determinism),
                 );
                 let cache_write_fut = time::timeout(
-                    Duration::from_millis(TIMEOUT_CACHE_WRITE_MILLIS),
+                    Duration::from_millis(timeouts::TIMEOUT_CACHE_WRITE_MILLIS),
                     self.caching_backend.write(inputs, &outputs, self.capsule_job()),
                 );
                 let upload_fut = time::timeout(
-                    Duration::from_millis(TIMEOUT_UPLOAD_MILLIS),
+                    Duration::from_millis(timeouts::TIMEOUT_UPLOAD_MILLIS),
                     self.upload_files(&outputs),
                 );
                 let (logger_result, cache_result, upload_result) = join!(logger_fut, cache_write_fut, upload_fut);
@@ -311,7 +300,7 @@ impl<'a> Capsule<'a> {
         }
 
         let lookup_result = time::timeout(
-            Duration::from_millis(TIMEOUT_LOOKUP_MILLIS),
+            Duration::from_millis(timeouts::TIMEOUT_LOOKUP_MILLIS),
             self.caching_backend.lookup(&inputs),
         )
         .await
@@ -364,7 +353,7 @@ impl<'a> Capsule<'a> {
 
             if use_cache {
                 if let Ok(result) = time::timeout(
-                    Duration::from_millis(TIMEOUT_DOWNLOAD_MILLIS),
+                    Duration::from_millis(timeouts::TIMEOUT_DOWNLOAD_MILLIS),
                     self.download_files(&lookup_result.outputs),
                 )
                 .await
