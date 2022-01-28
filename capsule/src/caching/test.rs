@@ -5,16 +5,23 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::{Arc, RwLock};
+use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncReadExt};
+use tokio::time;
 
 use crate::iohashing::{InputHashBundle, InputOutputBundle, OutputHashBundle};
 
+// This config enables various kinds of failures in the test caching backend.
 #[derive(Default)]
 pub struct TestBackendConfig {
     pub failing_lookup: bool,
     pub failing_write: bool,
     pub failing_download_files: bool,
     pub failing_upload_files: bool,
+    pub lookup_timeout: bool,
+    pub write_timeout: bool,
+    pub upload_timeout: bool,
+    pub download_timeout: bool,
 }
 
 // We have to use Arc<RwLock<_>> for internal mutability here because
@@ -52,6 +59,9 @@ impl CachingBackend for TestBackend {
     }
 
     async fn lookup(&self, inputs: &InputHashBundle) -> Result<Option<InputOutputBundle>> {
+        if self.test_config.lookup_timeout {
+            time::sleep(Duration::from_millis(500)).await;
+        }
         if self.test_config.failing_lookup {
             Err(anyhow!("Failed to lookup key"))
         } else {
@@ -62,6 +72,9 @@ impl CachingBackend for TestBackend {
     }
 
     async fn write(&self, inputs: &InputHashBundle, outputs: &OutputHashBundle, source: String) -> Result<()> {
+        if self.test_config.write_timeout {
+            time::sleep(Duration::from_millis(500)).await;
+        }
         if self.test_config.failing_write {
             Err(anyhow!("Failed to write key"))
         } else {
@@ -80,6 +93,9 @@ impl CachingBackend for TestBackend {
     }
 
     async fn download_object_file(&self, item_hash: &str) -> Result<Pin<Box<dyn AsyncRead>>> {
+        if self.test_config.download_timeout {
+            time::sleep(Duration::from_millis(500)).await;
+        }
         if self.test_config.failing_download_files {
             Err(anyhow!("Failed to download file"))
         } else {
@@ -95,6 +111,9 @@ impl CachingBackend for TestBackend {
         mut file: Pin<Box<dyn AsyncRead + Send>>,
         _content_length: u64,
     ) -> Result<()> {
+        if self.test_config.upload_timeout {
+            time::sleep(Duration::from_millis(500)).await;
+        }
         if self.test_config.failing_upload_files {
             Err(anyhow!("Failed to upload object file"))
         } else {

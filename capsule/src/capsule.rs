@@ -9,9 +9,11 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 use tempfile::NamedTempFile;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
+use tokio::time;
 
 use crate::caching::backend::CachingBackend;
 use crate::config::{Config, Milestone};
@@ -19,6 +21,36 @@ use crate::iohashing::*;
 use crate::observability::logger::Logger;
 
 static USAGE: &str = "Usage: capsule <capsule arguments ...> -- command [<arguments>]";
+
+#[cfg(not(test))]
+const TIMEOUT_LOOKUP_MILLIS: u64 = 10_000;
+
+#[cfg(test)]
+const TIMEOUT_LOOKUP_MILLIS: u64 = 200;
+
+#[cfg(not(test))]
+const TIMEOUT_LOGGING_MILLIS: u64 = 10_000;
+
+#[cfg(test)]
+const TIMEOUT_LOGGING_MILLIS: u64 = 200;
+
+#[cfg(not(test))]
+const TIMEOUT_CACHE_WRITE_MILLIS: u64 = 10_000;
+
+#[cfg(test)]
+const TIMEOUT_CACHE_WRITE_MILLIS: u64 = 200;
+
+#[cfg(not(test))]
+const TIMEOUT_UPLOAD_MILLIS: u64 = 180_000;
+
+#[cfg(test)]
+const TIMEOUT_UPLOAD_MILLIS: u64 = 200;
+
+#[cfg(not(test))]
+const TIMEOUT_DOWNLOAD_MILLIS: u64 = 180_000;
+
+#[cfg(test)]
+const TIMEOUT_DOWNLOAD_MILLIS: u64 = 200;
 
 pub struct Capsule<'a> {
     config: &'a Config,
@@ -156,20 +188,48 @@ impl<'a> Capsule<'a> {
                     );
                 }
 
-                let logger_fut = self.logger.log(inputs, &outputs, false, non_determinism);
-                let cache_write_fut = self.caching_backend.write(inputs, &outputs, self.capsule_job());
-                let cache_writefiles_fut = self.upload_files(&outputs);
-                let (logger_result, cache_result, cache_files_result) =
-                    join!(logger_fut, cache_write_fut, cache_writefiles_fut);
-                logger_result.unwrap_or_else(|err| {
-                    eprintln!("Failed to log results for observability: {}", err);
-                });
-                cache_result.unwrap_or_else(|err| {
-                    eprintln!("Failed to write entry to cache: {}", err);
-                });
-                cache_files_result.unwrap_or_else(|err| {
-                    eprintln!("Failed to write output files to cache: {}", err);
-                });
+                // Concurrently write the log, cache entry and cache objects (files).
+                // Timeouts are applied to each operation.
+                let logger_fut = time::timeout(
+                    Duration::from_millis(TIMEOUT_LOGGING_MILLIS),
+                    self.logger.log(inputs, &outputs, false, non_determinism),
+                );
+                let cache_write_fut = time::timeout(
+                    Duration::from_millis(TIMEOUT_CACHE_WRITE_MILLIS),
+                    self.caching_backend.write(inputs, &outputs, self.capsule_job()),
+                );
+                let upload_fut = time::timeout(
+                    Duration::from_millis(TIMEOUT_UPLOAD_MILLIS),
+                    self.upload_files(&outputs),
+                );
+                let (logger_result, cache_result, upload_result) = join!(logger_fut, cache_write_fut, upload_fut);
+
+                // If any of the above failed, we should just complain in the output, no need
+                // to return and error, or interrupt the flow - the errors are affecting caching
+                // or logging, but the wrapped binary had already been run by now.
+                if let Ok(result) = logger_result {
+                    result.unwrap_or_else(|err| {
+                        eprintln!("Failed to log results for observability: {}", err);
+                    });
+                } else {
+                    eprintln!("Time out logging results for observability");
+                }
+
+                if let Ok(result) = cache_result {
+                    result.unwrap_or_else(|err| {
+                        eprintln!("Failed to write entry to cache: {}", err);
+                    });
+                } else {
+                    eprintln!("Time out writing entry to cache");
+                }
+
+                if let Ok(result) = upload_result {
+                    result.unwrap_or_else(|err| {
+                        eprintln!("Failed to upload files to cache: {}", err);
+                    });
+                } else {
+                    eprintln!("Time out uploading files to cache");
+                }
             }
             Err(err) => {
                 eprintln!("Failed to get command outputs: {}", err);
@@ -237,7 +297,7 @@ impl<'a> Capsule<'a> {
         // If we only need to output the hash, just do it and quit.
         if self.config.inputs_hash_output {
             print!("{}", inputs.hash);
-            return Ok(0)
+            return Ok(0);
         }
 
         // In passive mode, skip everything, except reading inputs as we still want to fill
@@ -249,7 +309,14 @@ impl<'a> Capsule<'a> {
                 .with_context(|| "Waiting for child")
                 .map(|exit_status| exit_status.code().unwrap_or(Self::DEFAULT_EXIT_CODE));
         }
-        let lookup_result = self.caching_backend.lookup(&inputs).await?;
+
+        let lookup_result = time::timeout(
+            Duration::from_millis(TIMEOUT_LOOKUP_MILLIS),
+            self.caching_backend.lookup(&inputs),
+        )
+        .await
+        .context("Timeout looking up in cache")? // Outer Result wrapping is from Timeout.
+        .context("Looking in cache")?; // Inner Result wrapping is from the lookup itself.
         if let Some(ref lookup_result) = lookup_result {
             let log_cache_hit = |msg: &str| {
                 println!(
@@ -296,21 +363,30 @@ impl<'a> Capsule<'a> {
             }
 
             if use_cache {
-                match self.download_files(&lookup_result.outputs).await {
-                    Ok(_) => {
-                        log_cache_hit("success");
-                        // Log successful cached results.
-                        self.logger
-                            .log(&inputs, &lookup_result.outputs, true, false)
-                            .await
-                            .unwrap_or_else(|err| {
-                                eprintln!("Failed to log results for observability: {}", err);
-                            });
-                        return Ok(lookup_result.outputs.result_code().unwrap_or(Self::DEFAULT_EXIT_CODE));
+                if let Ok(result) = time::timeout(
+                    Duration::from_millis(TIMEOUT_DOWNLOAD_MILLIS),
+                    self.download_files(&lookup_result.outputs),
+                )
+                .await
+                {
+                    match result {
+                        Ok(_) => {
+                            log_cache_hit("success");
+                            // Log successful cached results.
+                            self.logger
+                                .log(&inputs, &lookup_result.outputs, true, false)
+                                .await
+                                .unwrap_or_else(|err| {
+                                    eprintln!("Failed to log results for observability: {}", err);
+                                });
+                            return Ok(lookup_result.outputs.result_code().unwrap_or(Self::DEFAULT_EXIT_CODE));
+                        }
+                        Err(e) => {
+                            log_cache_hit(&format!("failed to retrieve from the cache: {}", e));
+                        }
                     }
-                    Err(e) => {
-                        log_cache_hit(&format!("failed to retrieve from the cache: {}", e));
-                    }
+                } else {
+                    eprintln!("Time out downloading files");
                 }
             }
         }
@@ -893,5 +969,192 @@ mod tests {
         // Because the out file was not present when the run was cached, we should expect it
         // to be removed.
         assert!(out_file.exists());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_lookup_timeout() {
+        let tmp_dir = TempDir::new().unwrap();
+        let backend = TestBackend::new(
+            "wtf",
+            TestBackendConfig {
+                lookup_timeout: true,
+                ..Default::default()
+            },
+        );
+        let out_file_1 = tmp_dir.path().join("xx");
+        let config = Config::new(
+            [
+                "capsule",
+                "-c",
+                "wtf",
+                "-i",
+                "/bin/echo",
+                "-o",
+                out_file_1.to_str().unwrap(),
+                "--",
+                "/bin/bash",
+                "-c",
+                &format!("echo '123' > {}", out_file_1.to_str().unwrap()),
+            ]
+            .iter(),
+            None,
+            None,
+        )
+        .unwrap();
+        let capsule = Capsule::new(&config, &backend, &Dummy);
+        let mut program_run = AtomicBool::new(false);
+        capsule.run_capsule(&mut program_run).await.unwrap_err();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_download_timeout() {
+        let tmp_dir = TempDir::new().unwrap();
+        let backend = TestBackend::new(
+            "wtf",
+            TestBackendConfig {
+                download_timeout: true,
+                ..Default::default()
+            },
+        );
+        let out_file_1 = tmp_dir.path().join("xx");
+        let config = Config::new(
+            [
+                "capsule",
+                "-c",
+                "wtf",
+                "-i",
+                "/bin/echo",
+                "-o",
+                out_file_1.to_str().unwrap(),
+                "--",
+                "/bin/bash",
+                "-c",
+                &format!("echo '123' > {}", out_file_1.to_str().unwrap()),
+            ]
+            .iter(),
+            None,
+            None,
+        )
+        .unwrap();
+        let capsule = Capsule::new(&config, &backend, &Dummy);
+        let mut program_run = AtomicBool::new(false);
+        let code = capsule.run_capsule(&mut program_run).await.unwrap();
+        assert_eq!(code, 0);
+        assert!(program_run.load(Ordering::SeqCst));
+
+        std::fs::remove_file(&out_file_1).unwrap();
+
+        // Running 2nd time, expect a cache hit, but a download problem.
+        let capsule = Capsule::new(&config, &backend, &Dummy);
+        let mut program_run = AtomicBool::new(false);
+        // Returns ok, despite the download problem, as it would just execute the program
+        let code = capsule.run_capsule(&mut program_run).await.unwrap();
+        assert_eq!(code, 0);
+
+        // The 2nd time the program should be run, because of timeout downloading.
+        assert!(program_run.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_cache_write_timeout() {
+        let tmp_dir = TempDir::new().unwrap();
+        let backend = TestBackend::new(
+            "wtf",
+            TestBackendConfig {
+                write_timeout: true,
+                ..Default::default()
+            },
+        );
+        let out_file_1 = tmp_dir.path().join("xx");
+        let config = Config::new(
+            [
+                "capsule",
+                "-c",
+                "wtf",
+                "-i",
+                "/bin/echo",
+                "-o",
+                out_file_1.to_str().unwrap(),
+                "--",
+                "/bin/bash",
+                "-c",
+                &format!("echo '123' > {}", out_file_1.to_str().unwrap()),
+            ]
+            .iter(),
+            None,
+            None,
+        )
+        .unwrap();
+        let capsule = Capsule::new(&config, &backend, &Dummy);
+        let mut program_run = AtomicBool::new(false);
+        let code = capsule.run_capsule(&mut program_run).await.unwrap();
+        // Despite the write errors, the capsule successfully executed the program,
+        // so the return code is zero.
+        assert_eq!(code, 0);
+        assert!(program_run.load(Ordering::SeqCst));
+
+        // 2nd capsule, should NOT be cached, as the capsule call above failed to write to the
+        // cache, despite successful completion of the underlying program.
+        let capsule = Capsule::new(&config, &backend, &Dummy);
+        let mut program_run = AtomicBool::new(false);
+        let code = capsule.run_capsule(&mut program_run).await.unwrap();
+        assert_eq!(code, 0);
+        // The program must have been run.
+        assert!(program_run.load(Ordering::SeqCst));
+        assert!(out_file_1.is_file());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_cache_upload_timeout() {
+        let tmp_dir = TempDir::new().unwrap();
+        let backend = TestBackend::new(
+            "wtf",
+            TestBackendConfig {
+                upload_timeout: true,
+                ..Default::default()
+            },
+        );
+        let out_file_1 = tmp_dir.path().join("xx");
+        let config = Config::new(
+            [
+                "capsule",
+                "-c",
+                "wtf",
+                "-i",
+                "/bin/echo",
+                "-o",
+                out_file_1.to_str().unwrap(),
+                "--",
+                "/bin/bash",
+                "-c",
+                &format!("echo '123' > {}", out_file_1.to_str().unwrap()),
+            ]
+            .iter(),
+            None,
+            None,
+        )
+        .unwrap();
+        let capsule = Capsule::new(&config, &backend, &Dummy);
+        let mut program_run = AtomicBool::new(false);
+        let code = capsule.run_capsule(&mut program_run).await.unwrap();
+        // Despite the upload errors, the capsule successfully executed the program,
+        // so the return code is zero.
+        assert_eq!(code, 0);
+        assert!(program_run.load(Ordering::SeqCst));
+
+        // 2nd capsule, should NOT be cached, as the capsule call above failed to upload to the
+        // cache, despite successful completion of the underlying program.
+        let capsule = Capsule::new(&config, &backend, &Dummy);
+        let mut program_run = AtomicBool::new(false);
+        let code = capsule.run_capsule(&mut program_run).await.unwrap();
+        assert_eq!(code, 0);
+
+        // The program must have been run.
+        assert!(program_run.load(Ordering::SeqCst));
+        assert!(out_file_1.is_file());
     }
 }
