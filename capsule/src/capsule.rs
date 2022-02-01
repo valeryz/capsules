@@ -178,7 +178,7 @@ impl<'a> Capsule<'a> {
                 }
 
                 // Concurrently write the log, cache entry and cache objects (files).
-                // Timeouts are applied to each operation.
+                // The larger of each of the timeouts is applied to the combined branch.
                 let logger_fut = time::timeout(
                     Duration::from_millis(timeouts::TIMEOUT_LOGGING_MILLIS),
                     self.logger.log(inputs, &outputs, false, non_determinism),

@@ -13,7 +13,7 @@ use nix::unistd;
 use rand::Rng;
 
 use rusoto_core::region::Region;
-use rusoto_s3::{DeleteBucketRequest, S3Client, S3 as _};
+use rusoto_s3::{DeleteBucketRequest, PutObjectRequest, S3 as _, S3Client};
 
 use tokio::runtime::Runtime;
 
@@ -95,6 +95,7 @@ impl SetupData {
 pub fn setup() -> SetupData {
     let directory = tempfile::tempdir().expect("Failed to create temp dir");
     fs::create_dir_all(directory.path().join("minio").join("capsule-test")).unwrap();
+    fs::create_dir_all(directory.path().join("minio").join("capsule-objects")).unwrap();
     let mut rng = rand::thread_rng();
     let port = rng.gen_range(MINIO_PORT_RANGE.0..MINIO_PORT_RANGE.1);
     wait_for_bind(port).unwrap();
@@ -125,7 +126,7 @@ pub fn capsule(port: u16, args: &[&str]) -> i32 {
         .env(
             "CAPSULE_ARGS",
             format!(
-                "--s3_bucket=capsule-test --s3_bucket_objects=capsule_objects --s3_region=eu-central-1 --s3_endpoint=http://127.0.0.1:{}",
+                "--s3_bucket=capsule-test --s3_bucket_objects=capsule-objects --s3_region=eu-central-1 --s3_endpoint=http://127.0.0.1:{}",
                 port
             ),
         )
@@ -137,7 +138,10 @@ pub fn capsule(port: u16, args: &[&str]) -> i32 {
     output.status.code().unwrap_or(1)
 }
 
+// A utility to remove a bucket in integration tests.
 pub fn remove_bucket(port: u16, bucket: &str) {
+    std::env::set_var("AWS_ACCESS_KEY_ID", "minioadmin");
+    std::env::set_var("AWS_SECRET_ACCESS_KEY", "minioadmin");
     let req = DeleteBucketRequest {
         bucket: bucket.to_string(),
         expected_bucket_owner: None
@@ -148,6 +152,29 @@ pub fn remove_bucket(port: u16, bucket: &str) {
 
     let rt = Runtime::new().unwrap();
     rt.block_on(async move {
-        let _ = client.delete_bucket(req);
+        let _ = client.delete_bucket(req).await.unwrap();
+    });
+}
+
+// A utility to overwrite S3 objects in integration tests.
+pub fn put_object(port: u16, bucket: &str, key: &str, data: &[u8]) {
+    std::env::set_var("AWS_ACCESS_KEY_ID", "minioadmin");
+    std::env::set_var("AWS_SECRET_ACCESS_KEY", "minioadmin");
+
+    let req = PutObjectRequest {
+        bucket: bucket.to_string(),
+        key: key.to_string(),
+        body: Some(data.to_vec().into()),
+        content_length: Some(data.len() as i64),
+        content_type: Some("application/octet-stream".to_owned()),
+        ..Default::default()
+    };
+    let client = S3Client::new(Region::Custom {
+        name: "eu-central-1".to_string(),
+        endpoint: format!("http://127.0.0.1:{}", port) });
+
+    let rt = Runtime::new().unwrap();
+    rt.block_on(async move {
+        let _ = client.put_object(req).await.unwrap();
     });
 }
