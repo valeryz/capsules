@@ -1,3 +1,8 @@
+use std::fs;
+use std::io::Read;
+use sha2::{Digest, Sha256};
+use anyhow::{Context, Result};
+
 mod common;
 
 #[test]
@@ -82,7 +87,6 @@ fn test_s3_cache_hit() {
 #[test]
 fn test_cache_expiration() {
     let setup_data = common::setup(); // RAII - clean up on destruction.
-    let input = setup_data.path("input.txt");
 
     let side_effect = setup_data.path("side_effect.txt");
     let command = format!("echo 'hello!' > {}", side_effect.to_str().unwrap());
@@ -94,8 +98,6 @@ fn test_cache_expiration() {
             "wtf",
             "-t",
             "foo",
-            "-i",
-            input.to_str().unwrap(),
             "--",
             "/bin/bash",
             "-c",
@@ -119,8 +121,6 @@ fn test_cache_expiration() {
             "wtf",
             "-t",
             "foo",
-            "-i",
-            input.to_str().unwrap(),
             "--",
             "/bin/bash",
             "-c",
@@ -145,4 +145,109 @@ fn test_inputs_hash() {
 
     assert!(output.status.success());
     assert_eq!(output.stdout, b"6683fee73b2d88cd8414b00fdc6ea103e6e3d47f23dd8d67379b5be41fc72273");
+}
+
+fn file_hash(filename: &std::path::PathBuf) -> Result<String> {
+    const BUFSIZE: usize = 4096;
+    let mut acc = Sha256::new();
+    let mut f = fs::File::open(filename).with_context(|| format!("Reading input file '{}'", filename.to_string_lossy()))?;
+    let mut buf: [u8; BUFSIZE] = [0; BUFSIZE];
+    loop {
+        let rd = f.read(&mut buf)?;
+        if rd == 0 {
+            break;
+        }
+        acc.update(&buf[..rd]);
+    }
+    Ok(format!("{:x}", acc.finalize()))
+}
+
+#[test]
+fn test_cas_optimization() {
+    let setup_data = common::setup(); // RAII - clean up on destruction.
+    let output = setup_data.path("output.txt");
+
+    // Make sure the bucket exists before we start the test
+    common::put_object(setup_data.port, "capsule-objects", "foo", b"bar");
+
+    
+    let command = format!("echo 'foo' > {}", output.to_str().unwrap());
+    // Run it for the first time.
+    common::capsule(
+        setup_data.port,
+        &[
+            "-c",
+            "wtf",
+            "-b",
+            "s3",
+            "-t",
+            "xxx",
+            "-o",
+            output.to_str().unwrap(),
+            "--",
+            "/bin/bash",
+            "-c",
+            &command,
+        ],
+    );
+
+    let hash = file_hash(&output).unwrap();
+    let key = format!("{}/{}", &hash[0..2], hash);
+
+    // Overwrite the blob in the bucket with something else.
+    common::put_object(setup_data.port, "capsule-objects", &key, b"bar");
+
+    // Run exactly the same the 2nd time, but with a different capsule ID, so we don't get a cache hit,
+    // but still produce the same blob.
+    common::capsule(
+        setup_data.port,
+        &[
+            "-c",
+            "wtf_2",
+            "-b",
+            "s3",
+            "-t",
+            "yyy",
+            "-o",
+            output.to_str().unwrap(),
+            "--",
+            "/bin/bash",
+            "-c",
+            &command,
+        ],
+    );
+
+    let _ = fs::remove_file(&output);
+
+    // Check that the 'key' was not overwritten by the last capsule, and our own overwrite to 'bar'
+    // is still in place.  For that, we'll call capsule the 3rd time with the 1st capsule ID, and
+    // check that it gets the overwritten version of the blob.
+    let side_effect = setup_data.path("side_effect.txt");
+    let command = format!("echo 'wtf' > {}", side_effect.to_str().unwrap());
+    // Run it for the first time.
+    common::capsule(
+        setup_data.port,
+        &[
+            "-c",
+            "wtf",
+            "-b",
+            "s3",
+            "-t",
+            "xxx",
+            "-o",
+            output.to_str().unwrap(),
+            "--",
+            "/bin/bash",
+            "-c",
+            &command,
+        ],
+    );
+
+    println!("Checking file {:?}", side_effect);
+    // Verify that the second time the side effect is absent, as the command should not have been run.
+    assert!(!side_effect.exists());
+
+    // Not 'foo' as the command produced, but 'bar' in the blob of the cache that we put.
+    // this means there was no 2nd upload in the 2nd capsule call.
+    assert_eq!(fs::read_to_string(output).unwrap(), "bar");
 }
