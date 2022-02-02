@@ -52,7 +52,7 @@ Options below could be provided either as command line arguments, or as entries 
 
   * `--passive`: Used to disable capsule functionality. In this mode, the capsule does nothing except calling the wrapped command - it doesn't look up in the cache, doesn't write observabiltiy logs etc. It is convenient to set in CAPSULE_ARGS on CI when you need to disable all capsules.
 
-  * `--placebo (-p)`: Run capsule in placebo mode, where it does all the steps except actually using the cached result on cache hit. It will always run the wrapped command, and it will store the outputs in the cache. Additionally, it will compare the real outputs hashes with the outputs hashes from the cache hit and complain to stderr and to Honeycomb if there is non-determinism.
+  * `--placebo (-p)`: Run capsule in placebo mode, where it does all the steps except actually using the cached result on cache hit. It will always run the wrapped command, and it will store the outputs in the cache. Additionally, it will compare the real outputs hashes with the outputs hashes from the cache hit and complain to stderr and to Honeycomb if there is non-determinism.  Another way to run a capsule in placebo mode is to name the binary `placebo` using a hard or symbolic link.
 
   * `--inputs_hash`: Run capsule in inputs hash calculation mode. It will read its inputs hash, print it to the stdout and exit. There will be no cache lookup. This is used to determine the `Build ID` - a hash of inputs of some particular output, to be used outside the context of the capsule itself.
 
