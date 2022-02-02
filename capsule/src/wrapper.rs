@@ -21,7 +21,7 @@ where
     }
 }
 
-/// Execute a given command transparently passing the original arguments.
+// Execute a given command transparently passing the original arguments.
 pub fn exec() -> Result<()> {
     let mut args = env::args();
     let argv0 = &mut args.next();

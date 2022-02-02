@@ -29,7 +29,7 @@ build-release:
   tags:
     - shared
   script: |
-    cargo build --package capsule --release
+    cargo build --package capsule --package cargo-capsule --release
   artifacts:
     paths:
       - ./target/release/capsule
@@ -49,7 +49,8 @@ upload-release:
   script: |
     set -eux
     export PACKAGE_REGISTRY_URL="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/capsule/${CI_COMMIT_TAG}"
-    curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ./target/release/capsule "${PACKAGE_REGISTRY_URL}/capsule"
+    curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ./target/release/capsule "${PACKAGE_REGISTRY_URL}/linux-amd64/capsule"
+    curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ./target/release/cargo-capsule-test "${PACKAGE_REGISTRY_URL}/linux-amd64/cargo-capsule-test"
 
 make-release:
   before_script: []
