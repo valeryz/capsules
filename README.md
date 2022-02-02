@@ -1,6 +1,6 @@
 # Capsules
 
-Capsules aims encapsulate large and small build and test steps in a reproducible, isolated and cacheable
+Capsules aims to encapsulate large and small build and test steps in a reproducible, isolated and cacheable
 way. One instantiation is a `capsule`. Since a typical project will have many such instantiations in
 multiple places, the name of the project is in plural: `Capsules`.
 
