@@ -52,12 +52,15 @@ pub struct Config {
     pub capsule_job: Option<String>,
 
     #[serde(default)]
+    #[serde(rename="input")]
     pub input_files: Vec<String>,
 
     #[serde(default)]
+    #[serde(rename="tool_tag")]
     pub tool_tags: Vec<String>,
 
     #[serde(default)]
+    #[serde(rename="output")]
     pub output_files: Vec<String>,
 
     #[serde(default)]
@@ -178,10 +181,10 @@ impl Config {
                     .multiple_occurrences(true),
             )
             .arg(
-                Arg::new("tool")
-                    .help("Tool string (usually with a version)")
+                Arg::new("tool_tag")
+                    .help("Tool tag (compiler version, docker image sha, etc.)")
                     .short('t')
-                    .long("tool")
+                    .long("tool_tag")
                     .takes_value(true)
                     .multiple_occurrences(true),
             )
@@ -194,15 +197,15 @@ impl Config {
                     .multiple_occurrences(true),
             )
             .arg(
-                Arg::new("stdout")
+                Arg::new("capture_stdout")
                     .help("Capture stdout with the cached bundle")
-                    .long("stdout")
+                    .long("capture_stdout")
                     .takes_value(false),
             )
             .arg(
-                Arg::new("stderr")
+                Arg::new("capture_stderr")
                     .help("Capture stderr with the cached bundle")
-                    .long("stderr")
+                    .long("capture_stderr")
                     .takes_value(false),
             )
             .arg(
@@ -227,7 +230,7 @@ impl Config {
             )
             .arg(
                 Arg::new("cache_failure")
-                    .help("Verbose output")
+                    .help("Use cached failures")
                     .short('f')
                     .long("cache_failure"),
             )
@@ -343,8 +346,9 @@ impl Config {
         for matches in &match_sources {
             if let Some(capsule_id) = matches.value_of("capsule_id") {
                 config.capsule_id = Some(capsule_id.to_owned());
-            } else if matches.is_present("inputs_hash") {
-                // For --inputs_hash, capsule_id doesn't matter, so let's just silence the check below.
+            } else if matches.is_present("inputs_hash") || matches.is_present("passive") {
+                // For --inputs_hash, or --passive, capsule_id doesn't matter, so let's just silence
+                // the check below.
                 config.capsule_id = Some("-".to_owned());
             }
         }
@@ -373,16 +377,16 @@ impl Config {
             if let Some(inputs) = matches.values_of("input") {
                 config.input_files.extend(inputs.map(|x| x.to_owned()));
             }
-            if let Some(tools) = matches.values_of("tool") {
-                config.tool_tags.extend(tools.map(|x| x.to_owned()));
+            if let Some(tool_tags) = matches.values_of("tool_tag") {
+                config.tool_tags.extend(tool_tags.map(|x| x.to_owned()));
             }
             if let Some(outputs) = matches.values_of("output") {
                 config.output_files.extend(outputs.map(|x| x.to_owned()));
             }
-            if matches.is_present("stdout") {
+            if matches.is_present("capture_stdout") {
                 config.capture_stdout = Some(true);
             }
-            if matches.is_present("stderr") {
+            if matches.is_present("capture_stderr") {
                 config.capture_stderr = Some(true);
             }
             if matches.is_present("verbose") {
@@ -555,8 +559,8 @@ mod tests {
         let mut config_file = NamedTempFile::new().unwrap();
         let config_contents: &'static str = indoc! {r#"
            [my_capsule]
-           output_files=["compiled_binary"]
-           input_files=["/etc/passwd", "/nonexistent"]
+           output=["compiled_binary"]
+           input=["/etc/passwd", "/nonexistent"]
         "#};
         println!("Config file:\n{}", config_contents);
         config_file.write(config_contents.as_bytes()).unwrap();
@@ -578,7 +582,7 @@ mod tests {
         let mut config_file = NamedTempFile::new().unwrap();
         let config_contents: &'static str = indoc! {r#"
            capture_stdout = true
-           tool_tags = ["docker-ABCDEF"]
+           tool_tag = ["docker-ABCDEF"]
         "#};
         println!("Config file:\n{}", config_contents);
         config_file.write(config_contents.as_bytes()).unwrap();
@@ -600,7 +604,7 @@ mod tests {
         let mut default_config_file = NamedTempFile::new().unwrap();
         let config_contents: &'static str = indoc! {r#"
            capture_stdout = true
-           tool_tags = ["docker-ABCDEF"]
+           tool_tag = ["docker-ABCDEF"]
         "#};
         println!("Config file:\n{}", config_contents);
         default_config_file.write(config_contents.as_bytes()).unwrap();
@@ -610,9 +614,9 @@ mod tests {
         let config_contents: &'static str = indoc! {r#"
            [my_capsule]
            capture_stdout = false
-           output_files=["compiled_binary"]
-           input_files=["/etc/passwd", "/nonexistent"]
-           tool_tags = ["docker-1234"]
+           output = ["compiled_binary"]
+           input = ["/etc/passwd", "/nonexistent"]
+           tool_tag = ["docker-1234"]
         "#};
         current_config_file.write(config_contents.as_bytes()).unwrap();
         current_config_file.flush().unwrap();
@@ -635,9 +639,9 @@ mod tests {
         let config_contents: &'static str = indoc! {r#"
            [another_capsule]
            capture_stdout = false
-           output_files=["compiled_binary"]
-           input_files=["/etc/passwd", "/nonexistent"]
-           tool_tags = ["docker-1234"]
+           output = ["compiled_binary"]
+           input = ["/etc/passwd", "/nonexistent"]
+           tool_tag = ["docker-1234"]
         "#};
         current_config_file.write(config_contents.as_bytes()).unwrap();
         current_config_file.flush().unwrap();
@@ -655,12 +659,12 @@ mod tests {
 
     #[test]
     #[serial]
-    fn test_unique_canister_id() {
+    fn test_unique_capsule_id() {
         let mut current_config_file = NamedTempFile::new().unwrap();
         let config_contents: &'static str = indoc! {r#"
            [my_capsule_id]
-           output_files=["compiled_binary"]
-           input_files=["/etc/passwd", "/nonexistent"]
+           output = ["compiled_binary"]
+           input = ["/etc/passwd", "/nonexistent"]
         "#};
         current_config_file.write(config_contents.as_bytes()).unwrap();
         current_config_file.flush().unwrap();
@@ -681,12 +685,12 @@ mod tests {
         // This config has two sections, two capsule_ids. We don't know which one is meant.
         let config_contents: &'static str = indoc! {r#"
            [my_capsule_id]
-           output_files=["compiled_binary"]
-           input_files=["/etc/passwd", "/nonexistent"]
+           output=["compiled_binary"]
+           input=["/etc/passwd", "/nonexistent"]
 
            [other_capsule_id]
-           output_files=["compiled_binary"]
-           input_files=["/etc/passwd", "/nonexistent"]
+           output=["compiled_binary"]
+           input=["/etc/passwd", "/nonexistent"]
         "#};
         current_config_file.write(config_contents.as_bytes()).unwrap();
         current_config_file.flush().unwrap();
