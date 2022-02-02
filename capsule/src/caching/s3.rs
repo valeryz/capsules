@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use futures::TryStreamExt;
 use hyperx::header::CacheDirective;
 use rusoto_core::region::Region;
-use rusoto_s3::{GetObjectRequest, PutObjectRequest, S3Client, S3 as _};
+use rusoto_s3::{GetObjectRequest, HeadObjectRequest, PutObjectRequest, S3Client, S3 as _};
 use serde_cbor;
 use std::pin::Pin;
 use tokio::io::{AsyncRead, AsyncReadExt};
@@ -61,6 +61,22 @@ impl S3Backend {
 
     fn normalize_object_key(&self, key: &str) -> String {
         format!("{}/{}", &key[0..2], key)
+    }
+
+    async fn object_exists(&self, request: HeadObjectRequest) -> Result<bool> {
+        let result = self.client.head_object(request).await;
+        match result {
+            Ok(_) => Ok(true),
+            Err(rusoto_core::RusotoError::Service(rusoto_s3::HeadObjectError::NoSuchKey(_))) => Ok(false),
+            Err(rusoto_core::RusotoError::Unknown(resp)) if resp.status == 404 => {
+                // No such bucket
+                Ok(false)
+            }
+            Err(e) => {
+                eprintln!("object_exists error: {}", e);
+                Err(e.into())
+            },
+        }
     }
 }
 
@@ -121,10 +137,27 @@ impl CachingBackend for S3Backend {
         file: Pin<Box<dyn AsyncRead + Send>>,
         content_length: u64,
     ) -> Result<()> {
+        // Find the key under which we'll store the object in the bucket.
+        let key = self.normalize_object_key(item_hash);
+
+        let request = HeadObjectRequest {
+            bucket: self.bucket_objects.clone(),
+            key: key.clone(),
+            ..Default::default()
+        };
+
+        // Objects in the content addresable storage are "immutable", so duplicate uploads can be skipped.
+        if self.object_exists(request).await? {
+            eprintln!("Skipping upload for existing object '{}'", item_hash);
+            return Ok(());
+        } else {
+            eprintln!("Uploading the object to '{}'", item_hash);
+        }
+
         let byte_stream = codec::FramedRead::new(file, codec::BytesCodec::new()).map_ok(|r| r.freeze());
         let request = PutObjectRequest {
             bucket: self.bucket_objects.clone(),
-            key: self.normalize_object_key(item_hash),
+            key: key,
             body: Some(rusoto_core::ByteStream::new(byte_stream)),
             content_length: Some(content_length as i64),
             // Two weeks - content addresable storage doesn't change, so we can cache for long.
