@@ -33,6 +33,7 @@ build-release:
   artifacts:
     paths:
       - ./target/release/capsule
+      - ./target/release/cargo-capsule-test
 
 upload-release:
   before_script: []
