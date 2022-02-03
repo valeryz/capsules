@@ -21,7 +21,11 @@ the capsule will download cached results instead of invoking the given command. 
 the capsule will execute the specified command, and store the specified results in the cache for future
 matches.
 
-A capsule can be configured as "placebo". In this case, it will perform the lookup, but will not use the results even if there is cache hit. Instead, it will compare the cache hit with the results of the executed command, and complain if they mismatch. This could be used for non-determinism detection or for pre-populating the cache.
+A capsule can be configured as "placebo". In this case, it will perform the lookup, but will not use
+the results even if there is cache hit. Instead, it will compare the cache hit with the results of
+the executed command, and complain if they mismatch. In placebo mode, the results will still be
+uploaded to the cache after the command is executed. This could be used for non-determinism
+detection or for pre-populating the cache.
 
 The cache backend is currently S3 or a compatible storage. Modular architecture allows adding other
 storages in the future.
@@ -46,7 +50,7 @@ Capsules are configured in four places:
 
 Options below could be provided either as command line arguments, or as entries in the TOML files (without the leading `--`):
 
-## Capsule invocation options
+## Capsule Invocation Options
 
   * `--capsule_id (-c)`: ID of the capsule instance. All caching is done withing a specific capsule instance identified by this ID. This option is required in most invocations of capsule, except `--passive` and `--inputs_hash`. If capsule ID is not specified on the command line,
 
@@ -60,18 +64,18 @@ Options below could be provided either as command line arguments, or as entries 
 
 ## Specifying Inputs and Outputs
 
-  * `--input (-i)`: Specify an input file. There could be multiple `-i` options. In TOML, it should be an array.
+  * `--input (-i)`: Specify an input file. There could be multiple `-i` options. In TOML, it should be an array. Globs are supported, e.g. `-i "../gitlab-runner-tmp/**/*"`, or, to select all files below current directory, use `-i "**/*"`.
 
   * `--tool_tag (-t)`: Specify a tool tag. Tool tags are opaque strings that are added to the hash of the inputs, that are not representable as an input file. For example, hash of the docker image, compiler version, and so on. There could be multiple `-i` options. In TOML, it should be an array.
 
-  * `--output (-o)`: Specify an output file. This is an artifact produced by the command we are wrapping. The path will be recorded in the cache as is. Therefore it should likely be a relative path, unless the invocation of the given capsule ID is always performed in the same directory. This may change in the future, if capsule supports project root relative paths. In TOML, it should be an array.
+  * `--output (-o)`: Specify an output file. This is an artifact produced by the command we are wrapping. The path will be recorded in the cache as is. Therefore it should likely be a relative path, unless the invocation of the given capsule ID is always performed in the same directory. This may change in the future, if capsule supports project root relative paths. In TOML, it should be an array.  Globs are also supported for `-o`.
 
   * `--capture_stdout`: Whether stdout should be captured as one of the output files and returned on cache hit. Not implemented at the moment.
 
   * `--capture_stdout`: Whether stderr should be captured as one of the output files and returned on cache hit. Not implemented at the moment.
 
 
-## Caching options
+## Caching Options
 
   * `--backend (-b)`: Which backend to use. Possible options are `s3` and `dummy` (default).
 
@@ -80,7 +84,7 @@ Options below could be provided either as command line arguments, or as entries 
   * `--capsule_job (-j)`: Some opaque representaiton of the original capsule invocation from which the cache entry is taken. If the capsule ends up writing a cache entry, it will store this parameter in the cache entry. On cache hit, capsule will log this ID. This will allow to investigate invalid cache hits, by understanding where the cache entry is coming from. In GitLab, it makes sense to set this variable to the URL of the job.
 
 
-## S3 options
+## S3 Options
 
   * `--s3_bucket`: The bucket used for cache entries.
 
@@ -93,7 +97,7 @@ Options below could be provided either as command line arguments, or as entries 
 Authentication for S3 is set in the same way as in AWS CLI, using `~/.aws/credentials`.  See https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html.
 
 
-## Observability options
+## Observability Options
 
 Currently, capsules support logging the results of their operation to Honeycomb (http://honeycomb.io) for anaylsis and alerting. Other backends could be added as needed.
 
@@ -106,6 +110,11 @@ Currently, capsules support logging the results of their operation to Honeycomb 
   * `--honeycomb_parent_id`: Parent ID for this Honeycomb trace. It is convenient to set it to the Pipeline ID in CI.
 
   * `--honeycomb_kv`: Additional opaque string in the format `key=value` that will be added to the honeycomb entry for this capsule invocation. For example, it used to log the current git branch on CI: `--honeycomb_kv=branch='${CI_COMMIT_BRANCH:-}'`.
+
+
+## Misc Options
+
+  * `--inputs_hash_var`: set the name of the environmental variable in which capsules will publish the inputs hash. When the capsule runs a command, the command sees the hash of its inputs in a variable `CAPSULE_INPUTS_HASH`. This option allows to customize this variable name.  For example, for many commands that depend on some version string, this could be set to `VERSION`, or even `GIT_REVISION` to fake a git revision with a build id.
 
 
 # Roadmap
