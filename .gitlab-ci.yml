@@ -73,4 +73,4 @@ make-release:
     release-cli create --name "Release $CI_COMMIT_TAG" --tag-name $CI_COMMIT_TAG \
         --assets-link "{\"name\":\"capsule\",\"url\":\"${PACKAGE_REGISTRY_URL}/linux-amd64/capsule\"}"
     release-cli create --name "Release $CI_COMMIT_TAG" --tag-name $CI_COMMIT_TAG \
-        --assets-link "{\"name\":\"capsule\",\"url\":\"${PACKAGE_REGISTRY_URL}/linux-amd64/cargo-capsule-test\"}"
+        --assets-link "{\"name\":\"cargo-capsule-test\",\"url\":\"${PACKAGE_REGISTRY_URL}/linux-amd64/cargo-capsule-test\"}"
