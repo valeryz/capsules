@@ -112,7 +112,7 @@ dependencies = [
 
 [[package]]
 name = "bstr"
-version = "0.2.17"
+version = "0.2.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba3569f383e8f1598449f1a423e72e99569137b47740b1da11ef19af3d5c3223"
 dependencies = [
@@ -141,7 +141,7 @@ checksum = "6c58ec36aac5066d5ca17df51b3e70279f5670a72102f5752cb7e7c856adfc70"
 
 [[package]]
 name = "capsule"
-version = "0.2.17"
+version = "0.2.18"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -232,7 +232,7 @@ dependencies = [
 
 [[package]]
 name = "cargo-capsule"
-version = "0.2.17"
+version = "0.2.18"
 dependencies = [
  "anyhow",
  "cargo",
