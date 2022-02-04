@@ -52,7 +52,7 @@ Options below could be provided either as command line arguments, or as entries 
 
 ## Capsule Invocation Options
 
-  * `--capsule_id (-c)`: ID of the capsule instance. All caching is done withing a specific capsule instance identified by this ID. This option is required in most invocations of capsule, except `--passive` and `--inputs_hash`. If capsule ID is not specified on the command line,
+  * `--capsule_id (-c)`: ID of the capsule instance. All caching is done withing a specific capsule instance identified by this ID. This option is required in most invocations of capsule, except `--passive` and `--inputs_hash`. If capsule ID is not specified on the command line or `CAPSULE_ARGS`, it will attempt to find `Capsules.toml`, and if has exactly one section, the name of that section will be used as capsule ID. If it still cannot be found, the capsule fails (but still executes the wrapped command!).
 
   * `--passive`: Used to disable capsule functionality. In this mode, the capsule does nothing except calling the wrapped command - it doesn't look up in the cache, doesn't write observabiltiy logs etc. It is convenient to set in CAPSULE_ARGS on CI when you need to disable all capsules.
 
