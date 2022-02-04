@@ -50,8 +50,8 @@ upload-release:
   script: |
     set -eux
     export PACKAGE_REGISTRY_URL="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/capsule/${CI_COMMIT_TAG}"
-    curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ./target/release/capsule "${PACKAGE_REGISTRY_URL}/linux-amd64/capsule"
-    curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ./target/release/cargo-capsule-test "${PACKAGE_REGISTRY_URL}/linux-amd64/cargo-capsule-test"
+    curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ./target/release/capsule "${PACKAGE_REGISTRY_URL}/capsule-linux-amd64"
+    curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ./target/release/cargo-capsule-test "${PACKAGE_REGISTRY_URL}/cargo-capsule-test-linux-amd64"
 
 make-release:
   before_script: []
@@ -71,6 +71,6 @@ make-release:
     cd capsule
     export PACKAGE_REGISTRY_URL="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/capsule/${CI_COMMIT_TAG}"
     release-cli create --name "Release $CI_COMMIT_TAG" --tag-name $CI_COMMIT_TAG \
-        --assets-link "{\"name\":\"capsule\",\"url\":\"${PACKAGE_REGISTRY_URL}/linux-amd64/capsule\"}"
+        --assets-link "{\"name\":\"capsule-linux-amd64\",\"url\":\"${PACKAGE_REGISTRY_URL}/capsule-linux-amd64\"}"
     release-cli create --name "Release $CI_COMMIT_TAG" --tag-name $CI_COMMIT_TAG \
-        --assets-link "{\"name\":\"cargo-capsule-test\",\"url\":\"${PACKAGE_REGISTRY_URL}/linux-amd64/cargo-capsule-test\"}"
+        --assets-link "{\"name\":\"cargo-capsule-linux-amd64\",\"url\":\"${PACKAGE_REGISTRY_URL}/cargo-capsule-test-linux-amd64\"}"
