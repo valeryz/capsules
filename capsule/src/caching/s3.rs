@@ -5,7 +5,7 @@ use futures::TryStreamExt;
 use hyperx::header::CacheDirective;
 use rusoto_core::region::Region;
 use rusoto_s3::{GetObjectRequest, HeadObjectRequest, PutObjectRequest, S3Client, S3 as _};
-use serde_cbor;
+use serde_json;
 use std::pin::Pin;
 use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio_util::codec;
@@ -112,7 +112,7 @@ impl CachingBackend for S3Backend {
                     .read_to_end(&mut body)
                     .await
                     .context("failed to read HTTP body")?;
-                let bundle = serde_cbor::from_slice(&body).context("Cannot deserialize output")?;
+                let bundle = serde_json::from_slice(&body).context("Cannot deserialize output")?;
                 Ok(Some(bundle))
             }
         }
@@ -178,7 +178,7 @@ impl CachingBackend for S3Backend {
         };
         let key = self.normalize_key(&io_bundle.inputs.hash);
         // Prepare data for S3 writing.
-        let data = serde_cbor::to_vec(&io_bundle)?;
+        let data = serde_json::to_vec(&io_bundle)?;
         let data_len = data.len();
         let request = PutObjectRequest {
             bucket: self.bucket.clone(),
