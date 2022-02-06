@@ -487,10 +487,18 @@ impl Config {
                 }
             }
             if !has_match {
+                eprintln!("path {} does not match any pattern", path.display());
                 return Ok(false);
             }
         }
-        Ok(pattern_has_matches.iter().all(|&x| x))
+        let mut result = true;
+        for i in 0..patterns.len() {
+            if !pattern_has_matches[i] {
+                eprintln!("pattern {} does not have matching paths", patterns[i]);
+                result = false;
+            }
+        }
+        Ok(result)
     }
 }
 
