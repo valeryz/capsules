@@ -1,5 +1,6 @@
 use anyhow::anyhow;
 use anyhow::{Context, Result};
+use async_compression::tokio::bufread::{GzipEncoder, GzipDecoder};
 use async_trait::async_trait;
 use futures::TryStreamExt;
 use hyperx::header::CacheDirective;
@@ -7,7 +8,8 @@ use rusoto_core::region::Region;
 use rusoto_s3::{GetObjectRequest, HeadObjectRequest, PutObjectRequest, S3Client, S3 as _};
 use serde_json;
 use std::pin::Pin;
-use tokio::io::{AsyncRead, AsyncReadExt};
+use tempfile::tempfile;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncSeekExt, BufReader};
 use tokio_util::codec;
 
 use crate::caching::backend::CachingBackend;
@@ -75,7 +77,7 @@ impl S3Backend {
             Err(e) => {
                 eprintln!("object_exists error: {}", e);
                 Err(e.into())
-            },
+            }
         }
     }
 }
@@ -128,14 +130,20 @@ impl CachingBackend for S3Backend {
         };
         let response = self.client.get_object(request).await?;
         let body = response.body.context("No reponse body")?;
-        Ok(Box::pin(body.into_async_read()))
+        if response.content_encoding.unwrap_or_default() == "gzip"
+            || response.content_type.unwrap_or_default() == "application/gzip"
+        {
+            Ok(Box::pin(GzipDecoder::new(BufReader::new(body.into_async_read()))))
+        } else {
+            Ok(Box::pin(body.into_async_read()))
+        }
     }
 
     async fn upload_object_file(
         &self,
         item_hash: &str,
         file: Pin<Box<dyn AsyncRead + Send>>,
-        content_length: u64,
+        _content_length: u64,
     ) -> Result<()> {
         // Find the key under which we'll store the object in the bucket.
         let key = self.normalize_object_key(item_hash);
@@ -154,15 +162,25 @@ impl CachingBackend for S3Backend {
             eprintln!("Uploading the object to '{}'", item_hash);
         }
 
-        let byte_stream = codec::FramedRead::new(file, codec::BytesCodec::new()).map_ok(|r| r.freeze());
+        // We cannot compress the file on the fly due to the need for specify Content-length.
+        // So we'll create a temporary file with gzip'ed contents and upload it.
+        let mut file = GzipEncoder::new(BufReader::new(file));
+        let gzout = tempfile()?;
+        let mut gzout = tokio::fs::File::from_std(gzout);
+        tokio::io::copy(&mut file, &mut gzout).await?;
+        let content_length = gzout.metadata().await?.len();
+        gzout.seek(std::io::SeekFrom::Start(0)).await?;
+
+        // Temporary file is ready, time to upload it.
+        let byte_stream = codec::FramedRead::new(gzout, codec::BytesCodec::new()).map_ok(|r| r.freeze());
         let request = PutObjectRequest {
             bucket: self.bucket_objects.clone(),
             key: key,
             body: Some(rusoto_core::ByteStream::new(byte_stream)),
             content_length: Some(content_length as i64),
-            // Two weeks - content addresable storage doesn't change, so we can cache for long.
+            // Two weeks - content addresable storage doesn't change, so CDNs can cache for long.
             cache_control: Some(CacheDirective::MaxAge(2_592_000).to_string()),
-            content_type: Some("application/octet-stream".to_owned()),
+            content_type: Some("application/gzip".to_owned()),
             ..Default::default()
         };
         self.client.put_object(request).await?;
@@ -185,7 +203,7 @@ impl CachingBackend for S3Backend {
             body: Some(data.into()),
             cache_control: Some(CacheDirective::NoCache.to_string()),
             content_length: Some(data_len as i64),
-            content_type: Some("application/octet-stream".to_owned()),
+            content_type: Some("application/json".to_owned()),
             key,
             ..Default::default()
         };

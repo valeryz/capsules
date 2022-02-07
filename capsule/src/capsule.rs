@@ -289,6 +289,8 @@ impl<'a> Capsule<'a> {
             return Ok(0);
         }
 
+        eprintln!("Capsule inputs hash: {}", inputs.hash);
+
         // In passive mode, skip everything, except reading inputs as we still want to fill
         // CAPSULE_INPUTS_HASH with data about the capsule inputs.
         if self.config.passive {
