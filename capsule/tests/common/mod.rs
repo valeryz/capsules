@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Result, Context};
 use assert_cmd;
 use std::fs;
 use std::io::{self, Write};
@@ -13,9 +13,10 @@ use nix::unistd;
 use rand::Rng;
 
 use rusoto_core::region::Region;
-use rusoto_s3::{DeleteBucketRequest, PutObjectRequest, S3 as _, S3Client};
+use rusoto_s3::{DeleteBucketRequest, GetObjectRequest, PutObjectRequest, S3 as _, S3Client};
 
 use tokio::runtime::Runtime;
+use tokio::io::AsyncReadExt;
 
 use tempfile::{self, TempDir};
 
@@ -177,4 +178,33 @@ pub fn put_object(port: u16, bucket: &str, key: &str, data: &[u8]) {
     rt.block_on(async move {
         let _ = client.put_object(req).await.unwrap();
     });
+}
+
+// A utility read an s3 object in integration tests.
+pub fn get_object(port: u16, bucket: &str, key: &str) -> Result<Vec<u8>> {
+    std::env::set_var("AWS_ACCESS_KEY_ID", "minioadmin");
+    std::env::set_var("AWS_SECRET_ACCESS_KEY", "minioadmin");
+
+    let req = GetObjectRequest {
+        bucket: bucket.to_string(),
+        key: key.to_string(),
+        ..Default::default()
+    };
+    let client = S3Client::new(Region::Custom {
+        name: "eu-central-1".to_string(),
+        endpoint: format!("http://127.0.0.1:{}", port) });
+
+    let rt = Runtime::new().unwrap();
+    let body = rt.block_on(async move {
+        let response = client.get_object(req).await.unwrap();
+        let body = response.body.context("No reponse body")?;
+        let mut body_reader = body.into_async_read();
+        let mut body = Vec::new();
+        body_reader
+            .read_to_end(&mut body)
+            .await
+            .context("failed to read HTTP body")?;
+        return Ok::<Vec<u8>, anyhow::Error>(body);
+    })?;
+    Ok(body)
 }

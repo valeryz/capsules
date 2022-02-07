@@ -78,7 +78,7 @@ pub struct OutputSet {
 /// TODO(valeryz): Maybe cache these in a parent process' memory by the
 /// output of stat(2), except atime, so that we don't have to read
 /// them twice during a single build process.
-fn file_hash(filename: &Path) -> Result<String> {
+pub fn file_hash(filename: &Path) -> Result<String> {
     const BUFSIZE: usize = 4096;
     let mut acc = Sha256::new();
     let mut f = File::open(filename).with_context(|| format!("Reading input file '{}'", filename.to_string_lossy()))?;
