@@ -243,6 +243,11 @@ impl<'a> Capsule<'a> {
                         let mut file_body_reader = self.caching_backend.download_object_file(item_hash).await?;
                         tokio::io::copy(&mut file_body_reader, &mut file_stream).await?;
                         file_stream.flush().await?;
+                        eprintln!("file {} downloaded, verifying hash", fileoutput.filename.display());
+                        let received_hash = file_hash(&path)?; // A sync call, but should be fast.
+                        if received_hash != *item_hash {
+                            return Err(anyhow!("Mismatch of the downloaded file hash"));
+                        }
                         path.persist(&fileoutput.filename)?;
                         std::fs::set_permissions(
                             &fileoutput.filename,
@@ -288,6 +293,8 @@ impl<'a> Capsule<'a> {
             print!("{}", inputs.hash);
             return Ok(0);
         }
+
+        eprintln!("Capsule inputs hash: {}", inputs.hash);
 
         // In passive mode, skip everything, except reading inputs as we still want to fill
         // CAPSULE_INPUTS_HASH with data about the capsule inputs.

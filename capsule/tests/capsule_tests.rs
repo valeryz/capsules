@@ -219,35 +219,6 @@ fn test_cas_optimization() {
 
     let _ = fs::remove_file(&output);
 
-    // Check that the 'key' was not overwritten by the last capsule, and our own overwrite to 'bar'
-    // is still in place.  For that, we'll call capsule the 3rd time with the 1st capsule ID, and
-    // check that it gets the overwritten version of the blob.
-    let side_effect = setup_data.path("side_effect.txt");
-    let command = format!("echo 'wtf' > {}", side_effect.to_str().unwrap());
-    // Run it for the first time.
-    common::capsule(
-        setup_data.port,
-        &[
-            "-c",
-            "wtf",
-            "-b",
-            "s3",
-            "-t",
-            "xxx",
-            "-o",
-            output.to_str().unwrap(),
-            "--",
-            "/bin/bash",
-            "-c",
-            &command,
-        ],
-    );
-
-    println!("Checking file {:?}", side_effect);
-    // Verify that the second time the side effect is absent, as the command should not have been run.
-    assert!(!side_effect.exists());
-
-    // Not 'foo' as the command produced, but 'bar' in the blob of the cache that we put.
-    // this means there was no 2nd upload in the 2nd capsule call.
-    assert_eq!(fs::read_to_string(output).unwrap(), "bar");
+    assert_eq!(b"bar".to_vec(),
+               common::get_object(setup_data.port, "capsule-objects", &key).unwrap());
 }
