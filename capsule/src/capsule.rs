@@ -27,8 +27,8 @@ mod timeouts {
     pub(super) const TIMEOUT_LOOKUP_MILLIS: u64 = 10_000;
     pub(super) const TIMEOUT_LOGGING_MILLIS: u64 = 10_000;
     pub(super) const TIMEOUT_CACHE_WRITE_MILLIS: u64 = 10_000;
-    pub(super) const TIMEOUT_UPLOAD_MILLIS: u64 = 300_000;
-    pub(super) const TIMEOUT_DOWNLOAD_MILLIS: u64 = 300_000;
+    pub(super) const TIMEOUT_UPLOAD_MILLIS: u64 = 600_000;
+    pub(super) const TIMEOUT_DOWNLOAD_MILLIS: u64 = 600_000;
 }
 
 // Timeout constants to be used in unit tests.
