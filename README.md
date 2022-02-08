@@ -72,7 +72,7 @@ Options below could be provided either as command line arguments, or as entries 
 
   * `--capture_stdout`: Whether stdout should be captured as one of the output files and returned on cache hit. Not implemented at the moment.
 
-  * `--capture_stdout`: Whether stderr should be captured as one of the output files and returned on cache hit. Not implemented at the moment.
+  * `--capture_stderr`: Whether stderr should be captured as one of the output files and returned on cache hit. Not implemented at the moment.
 
 
 ## Caching Options
