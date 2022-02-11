@@ -101,6 +101,18 @@ pub struct Config {
     pub s3_region: Option<String>,
 
     #[serde(default)]
+    pub s3_uploads_endpoint: Option<String>,
+
+    #[serde(default)]
+    pub s3_uploads_region: Option<String>,
+
+    #[serde(default)]
+    pub s3_downloads_endpoint: Option<String>,
+
+    #[serde(default)]
+    pub s3_downloads_region: Option<String>,
+
+    #[serde(default)]
     pub inputs_hash_var: String,
 
     #[serde(default)]
@@ -297,6 +309,30 @@ impl Config {
                     .takes_value(true),
             )
             .arg(
+                Arg::new("s3_uploads_endpoint")
+                    .long("s3_uploads_endpoint")
+                    .help("S3 uploads endpoint")
+                    .takes_value(true),
+            )
+            .arg(
+                Arg::new("s3_uploads_region")
+                    .long("s3_uploads_region")
+                    .help("S3 uploads region")
+                    .takes_value(true),
+            )
+            .arg(
+                Arg::new("s3_downloads_endpoint")
+                    .long("s3_downloads_endpoint")
+                    .help("S3 downloads endpoint")
+                    .takes_value(true),
+            )
+            .arg(
+                Arg::new("s3_downloads_region")
+                    .long("s3_downloads_region")
+                    .help("S3 downloads region")
+                    .takes_value(true),
+            )
+            .arg(
                 Arg::new("inputs_hash_var")
                     .long("inputs_hash_var")
                     .help("Variable in which the hash of inputs values stored")
@@ -440,6 +476,18 @@ impl Config {
                 config.s3_region = Some(value.into());
             }
             if let Some(value) = matches.value_of("s3_endpoint") {
+                config.s3_endpoint = Some(value.into());
+            }
+            if let Some(value) = matches.value_of("s3_uploads_region") {
+                config.s3_region = Some(value.into());
+            }
+            if let Some(value) = matches.value_of("s3_uploads_endpoint") {
+                config.s3_endpoint = Some(value.into());
+            }
+            if let Some(value) = matches.value_of("s3_downloads_region") {
+                config.s3_region = Some(value.into());
+            }
+            if let Some(value) = matches.value_of("s3_downloads_endpoint") {
                 config.s3_endpoint = Some(value.into());
             }
             if let Some(value) = matches.value_of("inputs_hash_var") {
