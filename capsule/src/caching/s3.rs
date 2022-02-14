@@ -1,6 +1,6 @@
 use anyhow::anyhow;
 use anyhow::{Context, Result};
-use async_compression::tokio::bufread::{GzipEncoder, GzipDecoder};
+use async_compression::tokio::bufread::{GzipDecoder, GzipEncoder};
 use async_trait::async_trait;
 use futures::TryStreamExt;
 use hyperx::header::CacheDirective;
@@ -23,8 +23,14 @@ pub struct S3Backend {
     /// S3 bucket for objects,
     pub bucket_objects: String,
 
-    /// An S3 client from Rusoto.
+    /// An Rusoto S3 client
     pub client: S3Client,
+
+    /// An S3 client for uploads
+    pub client_uploads: S3Client,
+
+    /// An S3 client for downloads
+    pub client_downloads: S3Client,
 
     /// Capsule ID
     pub capsule_id: String,
@@ -32,6 +38,50 @@ pub struct S3Backend {
 
 impl S3Backend {
     pub fn from_config(config: &Config) -> Result<Self> {
+        let client = S3Client::new(Region::Custom {
+            name: config
+                .s3_region
+                .as_ref()
+                .cloned()
+                .ok_or_else(|| anyhow!("S3 region not specified"))?,
+            endpoint: config
+                .s3_endpoint
+                .as_ref()
+                .cloned()
+                .ok_or_else(|| anyhow!("S3 endpoint not specified"))?,
+        });
+        let client_uploads = if config.s3_uploads_endpoint.is_some() || config.s3_uploads_region.is_some() {
+            S3Client::new(Region::Custom {
+                name: config
+                    .s3_uploads_region
+                    .as_ref()
+                    .cloned()
+                    .ok_or_else(|| anyhow!("S3 uploads region not specified"))?,
+                endpoint: config
+                    .s3_uploads_endpoint
+                    .as_ref()
+                    .cloned()
+                    .ok_or_else(|| anyhow!("S3 uploads endpoint not specified"))?,
+            })
+        } else {
+            client.clone()
+        };
+        let client_downloads = if config.s3_downloads_endpoint.is_some() || config.s3_downloads_region.is_some() {
+            S3Client::new(Region::Custom {
+                name: config
+                    .s3_downloads_region
+                    .as_ref()
+                    .cloned()
+                    .ok_or_else(|| anyhow!("S3 downloads region not specified"))?,
+                endpoint: config
+                    .s3_downloads_endpoint
+                    .as_ref()
+                    .cloned()
+                    .ok_or_else(|| anyhow!("S3 downloads endpoint not specified"))?,
+            })
+        } else {
+            client.clone()
+        };
         Ok(Self {
             bucket: config
                 .s3_bucket
@@ -41,18 +91,9 @@ impl S3Backend {
                 .s3_bucket_objects
                 .clone()
                 .ok_or_else(|| anyhow!("S3 bucket for objects not specified"))?,
-            client: S3Client::new(Region::Custom {
-                name: config
-                    .s3_region
-                    .as_ref()
-                    .cloned()
-                    .ok_or_else(|| anyhow!("S3 region not specified"))?,
-                endpoint: config
-                    .s3_endpoint
-                    .as_ref()
-                    .cloned()
-                    .ok_or_else(|| anyhow!("S3 endpoint not specified"))?,
-            }),
+            client,
+            client_uploads,
+            client_downloads,
             capsule_id: config.capsule_id.as_deref().unwrap().to_string(),
         })
     }
@@ -66,7 +107,8 @@ impl S3Backend {
     }
 
     async fn object_exists(&self, request: HeadObjectRequest) -> Result<bool> {
-        let result = self.client.head_object(request).await;
+        // We use the uploads client, since we have to check object existence before the upload.
+        let result = self.client_uploads.head_object(request).await;
         match result {
             Ok(_) => Ok(true),
             Err(rusoto_core::RusotoError::Service(rusoto_s3::HeadObjectError::NoSuchKey(_))) => Ok(false),
@@ -128,7 +170,7 @@ impl CachingBackend for S3Backend {
             key,
             ..Default::default()
         };
-        let response = self.client.get_object(request).await?;
+        let response = self.client_downloads.get_object(request).await?;
         let body = response.body.context("No reponse body")?;
         if response.content_encoding.unwrap_or_default() == "gzip"
             || response.content_type.unwrap_or_default() == "application/gzip"
@@ -183,7 +225,7 @@ impl CachingBackend for S3Backend {
             content_type: Some("application/gzip".to_owned()),
             ..Default::default()
         };
-        self.client.put_object(request).await?;
+        self.client_uploads.put_object(request).await?;
         Ok(())
     }
 
