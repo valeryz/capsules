@@ -479,16 +479,16 @@ impl Config {
                 config.s3_endpoint = Some(value.into());
             }
             if let Some(value) = matches.value_of("s3_uploads_region") {
-                config.s3_region = Some(value.into());
+                config.s3_uploads_region = Some(value.into());
             }
             if let Some(value) = matches.value_of("s3_uploads_endpoint") {
-                config.s3_endpoint = Some(value.into());
+                config.s3_uploads_endpoint = Some(value.into());
             }
             if let Some(value) = matches.value_of("s3_downloads_region") {
-                config.s3_region = Some(value.into());
+                config.s3_downloads_region = Some(value.into());
             }
             if let Some(value) = matches.value_of("s3_downloads_endpoint") {
-                config.s3_endpoint = Some(value.into());
+                config.s3_downloads_endpoint = Some(value.into());
             }
             if let Some(value) = matches.value_of("inputs_hash_var") {
                 config.inputs_hash_var = value.to_string();
