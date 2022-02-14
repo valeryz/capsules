@@ -154,7 +154,7 @@ checksum = "6c58ec36aac5066d5ca17df51b3e70279f5670a72102f5752cb7e7c856adfc70"
 
 [[package]]
 name = "capsule"
-version = "0.2.22"
+version = "0.2.23"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -245,7 +245,7 @@ dependencies = [
 
 [[package]]
 name = "cargo-capsule"
-version = "0.2.22"
+version = "0.2.23"
 dependencies = [
  "anyhow",
  "cargo",
