@@ -1,8 +1,8 @@
 use anyhow::anyhow;
 use anyhow::{Context, Result};
 
-use futures::future::try_join_all;
 use futures::join;
+use futures::stream::{StreamExt, TryStreamExt};
 use glob::glob;
 use indoc::indoc;
 use std::os::unix::fs::PermissionsExt;
@@ -13,7 +13,7 @@ use std::time::Duration;
 use tempfile::NamedTempFile;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
-use tokio::time;
+use tokio::{task, time};
 
 use crate::caching::backend::CachingBackend;
 use crate::config::{Config, Milestone};
@@ -231,6 +231,8 @@ impl<'a> Capsule<'a> {
     async fn download_files(&self, outputs: &OutputHashBundle) -> Result<()> {
         // Now download all files that should be present.
         let mut all_files_futures = Vec::new();
+        // This loop generates futures for all downloadable files, and places them
+        // into all_files_futures.
         for (item, item_hash) in &outputs.hash_details {
             if let Output::File(ref fileoutput) = item {
                 if fileoutput.present {
@@ -244,7 +246,9 @@ impl<'a> Capsule<'a> {
                         tokio::io::copy(&mut file_body_reader, &mut file_stream).await?;
                         file_stream.flush().await?;
                         eprintln!("file {} downloaded, verifying hash", fileoutput.filename.display());
-                        let received_hash = file_hash(&path)?; // A sync call, but should be fast.
+                        // Calculating the SHA256 is a long CPU bound op, better do in a thread.
+                        let tmp_path = path.to_path_buf();
+                        let received_hash = task::spawn_blocking(move || file_hash(&tmp_path)).await??;
                         if received_hash != *item_hash {
                             return Err(anyhow!("Mismatch of the downloaded file hash"));
                         }
@@ -259,7 +263,11 @@ impl<'a> Capsule<'a> {
                 }
             }
         }
-        try_join_all(all_files_futures).await?;
+        // Limit concurrency to max configured download threads.
+        futures::stream::iter(all_files_futures.into_iter())
+            .buffer_unordered(self.config.concurrent_download_max)
+            .try_collect()
+            .await?;
         Ok(())
     }
 
@@ -279,7 +287,11 @@ impl<'a> Capsule<'a> {
                 }
             }
         }
-        try_join_all(all_files_futures).await?;
+        // Limit concurrency to max configured upload threads.
+        futures::stream::iter(all_files_futures.into_iter())
+            .buffer_unordered(self.config.concurrent_upload_max)
+            .try_collect()
+            .await?;
         Ok(())
     }
 
