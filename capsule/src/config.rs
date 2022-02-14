@@ -105,7 +105,21 @@ pub struct Config {
 
     #[serde(default)]
     pub inputs_hash_output: bool,
+
+    #[serde(default = "default_concurrent_download_max")]
+    #[derivative(Default(value="default_concurrent_download_max()"))]
+    pub concurrent_download_max: usize,
+
+    #[serde(default = "default_concurrent_upload_max")]
+    #[derivative(Default(value="default_concurrent_upload_max()"))]
+    pub concurrent_upload_max: usize,
 }
+
+// Ugliness until serde supports normal default parameters.
+// TODO: find a way to nicely provide defaults for all parameters.
+fn default_concurrent_download_max() -> usize { 3 }
+fn default_concurrent_upload_max() -> usize { 3 }
+
 
 impl Config {
     // Merge one config (e.g. Capsule.toml) into another (~/.capsules.toml)
