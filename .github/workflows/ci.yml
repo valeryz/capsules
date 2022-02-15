@@ -2,6 +2,10 @@ name: CI
 
 on: [push]
 
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: full
+
 jobs:
 
   test-nightly:
@@ -14,6 +18,10 @@ jobs:
           toolchain: nightly
           profile: minimal
           override: true
+      - name: Install minio
+        run: |
+          curl -L -o /usr/bin/minio https://dl.min.io/server/minio/release/linux-amd64/minio
+          chmod +x /usr/bin/minio
       - name: Run cargo test
         uses: actions-rs/cargo@v1
         with:
@@ -29,6 +37,10 @@ jobs:
           toolchain: stable
           profile: minimal
           override: true
+      - name: Install minio
+        run: |
+          curl -L -o /usr/bin/minio https://dl.min.io/server/minio/release/linux-amd64/minio
+          chmod +x /usr/bin/minio
       - name: Run cargo test
         uses: actions-rs/cargo@v1
         with:
