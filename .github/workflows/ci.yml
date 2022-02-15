@@ -20,8 +20,9 @@ jobs:
           override: true
       - name: Install minio
         run: |
-          curl -L -o /usr/bin/minio https://dl.min.io/server/minio/release/linux-amd64/minio
-          chmod +x /usr/bin/minio
+          curl -L -o minio https://dl.min.io/server/minio/release/linux-amd64/minio
+          chmod +x minio
+          pwd >> $GITHUB_PATH
       - name: Run cargo test
         uses: actions-rs/cargo@v1
         with:
@@ -39,8 +40,9 @@ jobs:
           override: true
       - name: Install minio
         run: |
-          curl -L -o /usr/bin/minio https://dl.min.io/server/minio/release/linux-amd64/minio
-          chmod +x /usr/bin/minio
+          curl -L -o minio https://dl.min.io/server/minio/release/linux-amd64/minio
+          chmod +x minio
+          pwd >> $GITHUB_PATH
       - name: Run cargo test
         uses: actions-rs/cargo@v1
         with:
