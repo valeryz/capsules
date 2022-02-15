@@ -20,6 +20,7 @@ jobs:
           override: true
       - name: Install minio
         run: |
+          set -eux
           curl -L -o minio https://dl.min.io/server/minio/release/linux-amd64/minio
           chmod +x minio
           pwd >> $GITHUB_PATH
@@ -40,6 +41,7 @@ jobs:
           override: true
       - name: Install minio
         run: |
+          set -eux
           curl -L -o minio https://dl.min.io/server/minio/release/linux-amd64/minio
           chmod +x minio
           pwd >> $GITHUB_PATH
@@ -47,7 +49,6 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-
 
   build-release:
     runs-on: ubuntu-latest
@@ -59,8 +60,41 @@ jobs:
           toolchain: stable
           profile: minimal
           override: true
-      - name: Run cargo test
+      - name: Run cargo build --release
         uses: actions-rs/cargo@v1
         with:
           command: build
           args: --release
+      - name: Create Release
+        id: create_release
+        if: ${{ github.ref_type == 'tag' }}
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
+      - name: Upload capsule binary
+        if: ${{ github.ref_type == 'tag' }}
+        id: upload-release-asset-capsule
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./target/release/capsule
+          asset_name: capsule
+          asset_content_type: application/octet-stream
+      - name: Upload cargo-capsule-test binary
+        if: ${{ github.ref_type == 'tag' }}
+        id: upload-release-asset-cargo-capsule-test
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./target/release/cargo-capsule-test
+          asset_name: cargo-capsule-test
+          asset_content_type: application/octet-stream
