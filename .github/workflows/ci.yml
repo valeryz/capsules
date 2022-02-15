@@ -65,14 +65,6 @@ jobs:
         with:
           command: build
           args: --release
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v2
-        with:
-          name: capsule
-          path: |
-            ./target/release/capsule
-            ./target/release/cargo-capsule-test
-          if-no-files-found: error
       - name: Create Release
         id: create_release
         if: ${{ github.ref_type == 'tag' }}
@@ -84,14 +76,25 @@ jobs:
           release_name: Release ${{ github.ref }}
           draft: false
           prerelease: false
-      - name: Upload Capsule
+      - name: Upload capsule binary
         if: ${{ github.ref_type == 'tag' }}
         id: upload-release-asset
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./target/release/capsule
           asset_name: capsule
+          asset_content_type: application/octet-stream
+      - name: Upload cargo-capsule-test binary
+        if: ${{ github.ref_type == 'tag' }}
+        id: upload-release-asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./target/release/cargo-capsule-test
+          asset_name: cargo-capsule-test
           asset_content_type: application/octet-stream
