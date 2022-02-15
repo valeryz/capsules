@@ -129,3 +129,8 @@ The roadmap for Capsules consists of four milestones:
 With these milestones achieved, capsules will be much less intrusive than Bazel or Nix, so that developers can still use their standard build systems, but still get the benefits of caching, better capacity planning and resource utilization, with just one small Rust program.
 
 Opting out: if capsules are used intensively in some build pipeline, enough of dependency information would be collected to make a migration to e.g. Bazel much easier. Therefore one can see Capsules as intermediate step for Bazel adoption.
+
+
+# Contributing
+
+Capsule is released by the DFINITY Foundation under the [Apache-2.0](LICENSE) license and is open to public code contributions.
