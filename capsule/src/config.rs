@@ -10,6 +10,8 @@ use std::str::FromStr;
 use std::{env, ffi::OsString};
 use toml;
 
+use crate::workspace_path::WorkspacePath;
+
 #[derive(Debug, Derivative, PartialEq)]
 #[derivative(Default)]
 pub enum Milestone {
@@ -35,6 +37,9 @@ pub struct Config {
     pub milestone: Milestone,
 
     #[serde(default)]
+    pub workspace_root: Option<String>,
+
+    #[serde(default)]
     pub verbose: bool,
 
     #[serde(default)]
@@ -54,7 +59,7 @@ pub struct Config {
 
     #[serde(default)]
     #[serde(rename = "input")]
-    pub input_files: Vec<String>,
+    pub input_files: Vec<WorkspacePath>,
 
     #[serde(default)]
     #[serde(rename = "tool_tag")]
@@ -62,7 +67,7 @@ pub struct Config {
 
     #[serde(default)]
     #[serde(rename = "output")]
-    pub output_files: Vec<String>,
+    pub output_files: Vec<WorkspacePath>,
 
     #[serde(default)]
     pub capture_stdout: Option<bool>,
@@ -429,13 +434,13 @@ impl Config {
         config.backend = Backend::Dummy; // default caching backend.
         for matches in match_sources {
             if let Some(inputs) = matches.values_of("input") {
-                config.input_files.extend(inputs.map(|x| x.to_owned()));
+                config.input_files.extend(inputs.map(Into::into)); //|x| x.to_owned()));
             }
             if let Some(tool_tags) = matches.values_of("tool_tag") {
                 config.tool_tags.extend(tool_tags.map(|x| x.to_owned()));
             }
             if let Some(outputs) = matches.values_of("output") {
-                config.output_files.extend(outputs.map(|x| x.to_owned()));
+                config.output_files.extend(outputs.map(Into::into)); // |x| x.to_owned()));
             }
             if matches.is_present("capture_stdout") {
                 config.capture_stdout = Some(true);
@@ -529,15 +534,21 @@ impl Config {
     }
 
     // Check if all paths match at least one of the specified outputs.
-    pub fn outputs_match<'a, I: Iterator<Item = &'a Path>>(&self, paths: I) -> Result<bool> {
+    pub fn outputs_match<'a, I: Iterator<Item = &'a WorkspacePath>>(&self, paths: I) -> Result<bool> {
         // Take all patterns from globs in self.output_files
         let patterns = self
             .output_files
             .iter()
             .map(|path| {
+                let path = path.to_path(&self.workspace_root)?;
+                let path = path.to_str().ok_or(anyhow!("Cannot convert path to str"))?;
                 // Fix a common problem with patterns starting with ./
-                let path = if let Some(stripped) = path.strip_prefix("./") { stripped } else { path };
-                glob::Pattern::from_str(path)
+                let path = if let Some(stripped) = path.strip_prefix("./") {
+                    stripped
+                } else {
+                    &path
+                };
+                glob::Pattern::from_str(path).context("invalid pattern")
             })
             .collect::<Result<Vec<glob::Pattern>, _>>()
             .with_context(|| "Invalid output file pattern")?;
@@ -546,14 +557,14 @@ impl Config {
         for path in paths {
             let mut has_match = false;
             for (i, pattern) in patterns.iter().enumerate() {
-                if pattern.matches_path(path) {
+                if pattern.matches_path(&path.to_path(&self.workspace_root)?) {
                     has_match = true;
                     pattern_has_matches[i] = true;
                     break;
                 }
             }
             if !has_match {
-                error!("path {} does not match any pattern", path.display());
+                error!("path {} does not match any pattern", path);
                 return Ok(false);
             }
         }
@@ -646,8 +657,11 @@ mod tests {
             Some(config_file.path()),
         )
         .unwrap();
-        assert_eq!(config.input_files, vec!["/etc/passwd", "/nonexistent"]);
-        assert_eq!(config.output_files, vec!["compiled_binary"]);
+        assert_eq!(
+            config.input_files,
+            vec![WorkspacePath::from("/etc/passwd"), WorkspacePath::from("/nonexistent")]
+        );
+        assert_eq!(config.output_files, vec![WorkspacePath::from("compiled_binary")]);
     }
 
     #[test]
@@ -727,8 +741,8 @@ mod tests {
         )
         .unwrap();
         assert_eq!(config.tool_tags, Vec::<&str>::new());
-        assert_eq!(config.input_files, Vec::<&str>::new());
-        assert_eq!(config.output_files, Vec::<&str>::new());
+        assert_eq!(config.input_files, Vec::<WorkspacePath>::new());
+        assert_eq!(config.output_files, Vec::<WorkspacePath>::new());
     }
 
     #[test]
@@ -872,13 +886,13 @@ mod tests {
         )
         .unwrap();
         assert!(config
-            .outputs_match(vec![PathBuf::from("build-out/update-img/update-img-test.tar.gz").as_path()].into_iter())
+            .outputs_match(vec![&WorkspacePath::from("build-out/update-img/update-img-test.tar.gz")].into_iter())
             .unwrap());
         assert!(!config
             .outputs_match(
                 vec![
-                    PathBuf::from("build-out/update-img/update-img.tar.gz").as_path(),
-                    PathBuf::from("build-out/update-img/update-img-test.tar.gz").as_path()
+                    &WorkspacePath::from("build-out/update-img/update-img.tar.gz"),
+                    &WorkspacePath::from("build-out/update-img/update-img-test.tar.gz"),
                 ]
                 .into_iter()
             )

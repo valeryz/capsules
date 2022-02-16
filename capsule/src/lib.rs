@@ -4,3 +4,4 @@ pub mod config;
 pub mod iohashing;
 pub mod observability;
 pub mod wrapper;
+pub mod workspace_path;

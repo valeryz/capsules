@@ -7,7 +7,6 @@ use glob::glob;
 use indoc::indoc;
 use log::{error, info};
 use std::os::unix::fs::PermissionsExt;
-use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -20,6 +19,7 @@ use crate::caching::backend::CachingBackend;
 use crate::config::{Config, Milestone};
 use crate::iohashing::*;
 use crate::observability::logger::Logger;
+use crate::workspace_path::WorkspacePath;
 
 static USAGE: &str = "Usage: capsule <capsule arguments ...> -- command [<arguments>]";
 
@@ -69,10 +69,17 @@ impl<'a> Capsule<'a> {
         let mut inputs = InputSet::default();
         for file_pattern in &self.config.input_files {
             let mut file_count = 0;
-            for file in glob(file_pattern)? {
+            let fp = file_pattern.to_path(&self.config.workspace_root)?;
+            let glob_pattern = fp.to_str().ok_or(anyhow!("can't convert path to string"))?;
+            for file in glob(glob_pattern)? {
                 let file = file?;
                 if file.is_file() {
-                    inputs.add_input(Input::File(file));
+                    // Convert workspace relative patterns to workspace relative expansions.
+                    let expansion_file_name = match *file_pattern {
+                        WorkspacePath::NonWorkspace(_) => WorkspacePath::NonWorkspace(file),
+                        WorkspacePath::Workspace(_) => WorkspacePath::Workspace(file),
+                    };
+                    inputs.add_input(Input::File(expansion_file_name));
                     file_count += 1;
                 }
             }
@@ -86,7 +93,7 @@ impl<'a> Capsule<'a> {
         }
         let capsule_id = self.capsule_id();
         inputs
-            .hash_bundle()
+            .hash_bundle(&self.config.workspace_root)
             .with_context(|| format!("Hashing inputs of capsule '{}'", capsule_id))
     }
 
@@ -96,17 +103,25 @@ impl<'a> Capsule<'a> {
             outputs.add_output(Output::ExitCode(exit_code));
         }
         for file_pattern in &self.config.output_files {
+            let fp = file_pattern.to_path(&self.config.workspace_root)?;
+            let glob_pattern = fp.to_str().ok_or(anyhow!("can't convert path to string"))?;
             let mut present = false;
-            for file in glob(file_pattern)? {
+            for file in glob(glob_pattern)? {
                 let file = file?;
                 if file.is_dir() {
                     continue;
                 }
                 if file.is_file() {
+                    // Convert workspace relative patterns to workspace relative expansions.
+                    let mode = file.metadata()?.permissions().mode();
+                    let expansion_file_name = match *file_pattern {
+                        WorkspacePath::NonWorkspace(_) => WorkspacePath::NonWorkspace(file),
+                        WorkspacePath::Workspace(_) => WorkspacePath::Workspace(file),
+                    };
                     outputs.add_output(Output::File(FileOutput {
-                        filename: file.to_path_buf(),
+                        filename: expansion_file_name,
                         present: true,
-                        mode: file.metadata()?.permissions().mode(),
+                        mode,
                     }));
                     present = true;
                 }
@@ -114,7 +129,7 @@ impl<'a> Capsule<'a> {
             if !present {
                 // This seems to be a file that hasn't matched.
                 outputs.add_output(Output::File(FileOutput {
-                    filename: PathBuf::from(file_pattern),
+                    filename: file_pattern.clone(),
                     present: false,
                     mode: 0o644, // Default permissions just in case.
                 }));
@@ -122,7 +137,7 @@ impl<'a> Capsule<'a> {
         }
         let capsule_id = self.capsule_id();
         outputs
-            .hash_bundle()
+            .hash_bundle(&self.config.workspace_root)
             .with_context(|| format!("Hashing outputs of capsule '{}'", capsule_id))
     }
 
@@ -237,7 +252,8 @@ impl<'a> Capsule<'a> {
         for (item, item_hash) in &outputs.hash_details {
             if let Output::File(ref fileoutput) = item {
                 if fileoutput.present {
-                    let dir = fileoutput.filename.parent().context("No parent directory")?;
+                    let filename = fileoutput.filename.to_path(&self.config.workspace_root)?;
+                    let dir = filename.parent().context("No parent directory")?;
                     std::fs::create_dir_all(dir)?;
                     let file = NamedTempFile::new_in(dir)?;
                     let (file, path) = file.into_parts();
@@ -246,18 +262,15 @@ impl<'a> Capsule<'a> {
                         let mut file_body_reader = self.caching_backend.download_object_file(item_hash).await?;
                         tokio::io::copy(&mut file_body_reader, &mut file_stream).await?;
                         file_stream.flush().await?;
-                        info!("file {} downloaded, verifying hash", fileoutput.filename.display());
+                        info!("file {} downloaded, verifying hash", fileoutput.filename);
                         // Calculating the SHA256 is a long CPU bound op, better do in a thread.
                         let tmp_path = path.to_path_buf();
                         let received_hash = task::spawn_blocking(move || file_hash(&tmp_path)).await??;
                         if received_hash != *item_hash {
                             return Err(anyhow!("Mismatch of the downloaded file hash"));
                         }
-                        path.persist(&fileoutput.filename)?;
-                        std::fs::set_permissions(
-                            &fileoutput.filename,
-                            std::fs::Permissions::from_mode(fileoutput.mode),
-                        )?;
+                        path.persist(&filename)?;
+                        std::fs::set_permissions(&filename, std::fs::Permissions::from_mode(fileoutput.mode))?;
                         Ok::<(), anyhow::Error>(())
                     };
                     all_files_futures.push(download_file_fut);
@@ -278,7 +291,8 @@ impl<'a> Capsule<'a> {
         for (item, item_hash) in &outputs.hash_details {
             if let Output::File(ref fileoutput) = item {
                 if fileoutput.present {
-                    let tokio_file = tokio::fs::File::open(&fileoutput.filename).await?;
+                    let file_name = fileoutput.filename.to_path(&self.config.workspace_root)?;
+                    let tokio_file = tokio::fs::File::open(&file_name).await?;
                     let content_length = tokio_file.metadata().await?.len();
                     all_files_futures.push(self.caching_backend.upload_object_file(
                         item_hash,
@@ -354,10 +368,10 @@ impl<'a> Capsule<'a> {
                 // don't match with the capsule output files from config.
                 if use_cache {
                     // a predicate selecting all paths for Output::Files from all cached outputs.
-                    fn predicate<X>((output, _): &(Output, X)) -> Option<&Path> {
+                    fn predicate<X>((output, _): &(Output, X)) -> Option<&WorkspacePath> {
                         if let Output::File(fileoutput) = output {
                             if fileoutput.present {
-                                return Some(fileoutput.filename.as_path());
+                                return Some(&fileoutput.filename);
                             }
                         }
                         None
