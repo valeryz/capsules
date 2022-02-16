@@ -1,11 +1,10 @@
 /// This module represents a WorkspacePath, that is a path in the  project, possibly relative to the project root.
 /// It is implemented as a separate type, with explicit conversions to PathBuf, so that type safety
 /// prevents us from confusing it with either Strings, or PathBuf's
-
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::path::{Path, PathBuf};
 use std::fmt;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, PartialOrd, Ord, PartialEq, Eq, Clone)]
 pub enum WorkspacePath {
@@ -64,7 +63,7 @@ impl fmt::Display for WorkspacePath {
         match self {
             Self::NonWorkspace(path) => {
                 write!(f, "{}", path.display())
-            },
+            }
             Self::Workspace(path) => {
                 write!(f, "//{}", path.display())
             }
@@ -75,19 +74,18 @@ impl fmt::Display for WorkspacePath {
 impl<'de> Deserialize<'de> for WorkspacePath {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-        D: Deserializer<'de>
+        D: Deserializer<'de>,
     {
         let string_result = String::deserialize(deserializer);
         string_result.map(Into::into)
     }
-    
 }
 
 impl Serialize for WorkspacePath {
-     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-     where
-         S: Serializer,
-     {
-         serializer.serialize_str(&self.to_string())
-     }
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
 }
