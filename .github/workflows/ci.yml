@@ -29,7 +29,7 @@ jobs:
         with:
           command: test
 
-  clippy-nightly:
+  clippy-fmt-nightly:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -39,7 +39,7 @@ jobs:
           toolchain: nightly
           profile: minimal
           override: true
-          components: clippy
+          components: clippy, rustfmt
       - name: Run cargo clippy
         uses: actions-rs/cargo@v1
         with:
@@ -76,7 +76,7 @@ jobs:
           toolchain: stable
           profile: minimal
           override: true
-          components: clippy, fmt
+          components: clippy, rustfmt
       - name: Run cargo clippy
         uses: actions-rs/cargo@v1
         with:
