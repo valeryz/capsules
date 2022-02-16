@@ -29,7 +29,7 @@ jobs:
         with:
           command: test
 
-  clippy-nightly:
+  clippy-fmt-nightly:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -39,10 +39,15 @@ jobs:
           toolchain: nightly
           profile: minimal
           override: true
+          components: clippy, fmt
       - name: Run cargo clippy
         uses: actions-rs/cargo@v1
         with:
           command: clippy
+      - name: Run cargo fmt
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
 
   test-stable:
     runs-on: ubuntu-latest
@@ -65,7 +70,7 @@ jobs:
         with:
           command: test
 
-  clippy-stable:
+  clippy-fmt-stable:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -75,10 +80,15 @@ jobs:
           toolchain: stable
           profile: minimal
           override: true
+          components: clippy, fmt
       - name: Run cargo clippy
         uses: actions-rs/cargo@v1
         with:
           command: clippy
+      - name: Run cargo fmt
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
 
   build-release:
     runs-on: ubuntu-latest
