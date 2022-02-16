@@ -176,7 +176,7 @@ fn exec(config: &mut Config) -> CliResult {
         // Call cargo test -p 'target' under capsule with all these inputs.
         let inputs: InputSpec = deps
             .iter()
-            .map(|dep| -> Result<Vec<(String, String)>> {
+            .flat_map(|dep| -> Result<Vec<(String, String)>> {
                 if dep.is_local() {
                     // Find all files
                     let pkg = &dep.pkg;
@@ -194,7 +194,6 @@ fn exec(config: &mut Config) -> CliResult {
                 }
             })
             .flatten()
-            .flatten()
             .collect();
 
         match package_inputs.entry(root.pkg.name().to_string()) {
@@ -208,7 +207,7 @@ fn exec(config: &mut Config) -> CliResult {
     for (package, inputs) in package_inputs {
         // Modify capsule-id to include a specific root + hash of the args.
         let capsule_id = format!("{}-{}", capsule_id, package);
-        let capsule_args = inputs.iter().map(|(a, b)| [a, b]).flatten();
+        let capsule_args = inputs.iter().flat_map(|(a, b)| [a, b]);
 
         if debug_enabled() {
             println!(
@@ -258,8 +257,7 @@ fn main() {
     };
 
     let result = exec(&mut config);
-    match result {
-        Err(e) => cargo::exit_with_error(e, &mut *config.shell()),
-        Ok(()) => {}
+    if let Err(e) = result {
+        cargo::exit_with_error(e, &mut *config.shell())
     }
 }
