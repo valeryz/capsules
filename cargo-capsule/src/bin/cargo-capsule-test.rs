@@ -128,7 +128,7 @@ fn debug_enabled() -> bool {
 fn exec(config: &mut Config) -> CliResult {
     let app = create_clap_app();
     let args = app.get_matches_safe()?;
-    let ws = args.workspace(&config)?;
+    let ws = args.workspace(config)?;
 
     let pass_args = find_args_to_pass(&args);
     let capsule_id = args.value_of("capsule_id").expect("Capsule ID unknown");
@@ -152,7 +152,7 @@ fn exec(config: &mut Config) -> CliResult {
     } = ops::create_bcx(&ws, &compile_opts, &interner)?;
 
     if debug_enabled() {
-        let _ = unit_graph::emit_serialized_unit_graph(&roots, &unit_graph, ws.config())?;
+        let _ = unit_graph::emit_serialized_unit_graph(roots, unit_graph, ws.config())?;
     }
 
     type InputSpec = HashSet<(String, String)>;
@@ -169,7 +169,7 @@ fn exec(config: &mut Config) -> CliResult {
             .iter()
             .map(|unit_dep| &unit_dep.unit)
             .collect();
-        deps.push(&root);
+        deps.push(root);
 
         // For the transitive deps that are outside the workspace, represent them as tool tags.
         // for the deps that are inside the workspace, find all their sources, and include as -i.
@@ -201,7 +201,6 @@ fn exec(config: &mut Config) -> CliResult {
             Entry::Occupied(mut e) => e.get_mut().extend(inputs),
             Entry::Vacant(e) => {
                 e.insert(inputs);
-                ()
             }
         }
     }

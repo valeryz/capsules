@@ -217,7 +217,7 @@ impl CachingBackend for S3Backend {
         let byte_stream = codec::FramedRead::new(gzout, codec::BytesCodec::new()).map_ok(|r| r.freeze());
         let request = PutObjectRequest {
             bucket: self.bucket_objects.clone(),
-            key: key,
+            key,
             body: Some(rusoto_core::ByteStream::new(byte_stream)),
             content_length: Some(content_length as i64),
             // Two weeks - content addresable storage doesn't change, so CDNs can cache for long.

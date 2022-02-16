@@ -535,7 +535,7 @@ impl Config {
             .iter()
             .map(|path| {
                 // Fix a common problem with patterns starting with ./
-                let path = if path.starts_with("./") { &path[2..] } else { path };
+                let path = if let Some(stripped) = path.strip_prefix("./") { stripped } else { path };
                 glob::Pattern::from_str(path)
             })
             .collect::<Result<Vec<glob::Pattern>, _>>()
