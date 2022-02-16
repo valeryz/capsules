@@ -2,6 +2,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use clap::{App, Arg};
 use derivative::Derivative;
 use itertools;
+use log::error;
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -552,14 +553,14 @@ impl Config {
                 }
             }
             if !has_match {
-                eprintln!("path {} does not match any pattern", path.display());
+                error!("path {} does not match any pattern", path.display());
                 return Ok(false);
             }
         }
         let mut result = true;
         for i in 0..patterns.len() {
             if !pattern_has_matches[i] {
-                eprintln!("pattern {} does not have matching paths", patterns[i]);
+                error!("pattern {} does not have matching paths", patterns[i]);
                 result = false;
             }
         }

@@ -4,6 +4,7 @@ use async_compression::tokio::bufread::{GzipDecoder, GzipEncoder};
 use async_trait::async_trait;
 use futures::TryStreamExt;
 use hyperx::header::CacheDirective;
+use log::{error, info};
 use rusoto_core::region::Region;
 use rusoto_s3::{GetObjectRequest, HeadObjectRequest, PutObjectRequest, S3Client, S3 as _};
 use serde_json;
@@ -117,7 +118,7 @@ impl S3Backend {
                 Ok(false)
             }
             Err(e) => {
-                eprintln!("object_exists error: {}", e);
+                error!("object_exists error: {}", e);
                 Err(e.into())
             }
         }
@@ -198,10 +199,10 @@ impl CachingBackend for S3Backend {
 
         // Objects in the content addresable storage are "immutable", so duplicate uploads can be skipped.
         if self.object_exists(request).await? {
-            eprintln!("Skipping upload for existing object '{}'", item_hash);
+            info!("Skipping upload for existing object '{}'", item_hash);
             return Ok(());
         } else {
-            eprintln!("Uploading the object to '{}'", item_hash);
+            info!("Uploading the object to '{}'", item_hash);
         }
 
         // We cannot compress the file on the fly due to the need for specify Content-length.
