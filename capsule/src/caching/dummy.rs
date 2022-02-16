@@ -1,6 +1,7 @@
 use crate::caching::backend::CachingBackend;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
+use log::info;
 use std::pin::Pin;
 use tokio::io::AsyncRead;
 
@@ -37,13 +38,13 @@ impl CachingBackend for DummyBackend {
     }
 
     async fn write(&self, inputs: &InputHashBundle, outputs: &OutputHashBundle, source: String) -> Result<()> {
-        println!(
+        info!(
             "Capsule ID: '{}'. Capsule Source: '{}', Inputs key: '{}', Outputs key: {}",
             self.capsule_id, source, inputs.hash, outputs.hash,
         );
         if self.verbose_output {
-            println!("  Capsule Inputs hashes: {:?}", inputs.hash_details);
-            println!("  Capsule Outputs hashes: {:?}", outputs.hash_details);
+            info!("  Capsule Inputs hashes: {:?}", inputs.hash_details);
+            info!("  Capsule Outputs hashes: {:?}", outputs.hash_details);
         }
         Ok(())
     }

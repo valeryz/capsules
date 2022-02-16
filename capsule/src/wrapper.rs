@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
 use itertools;
+use log::warn;
 use nix::unistd::execvp;
 use std::env;
 use std::ffi::CString;
@@ -12,7 +13,7 @@ where
 {
     let program_cstring = CString::new(program_name)?;
     let args: Vec<String> = args.collect();
-    eprintln!("Fallback exec'ing {:?}", args);
+    warn!("Fallback exec'ing {:?}", args);
     let arg_cstrings = args.into_iter().map(CString::new).collect::<Result<Vec<_>, _>>()?;
 
     match execvp(&program_cstring, &arg_cstrings) {

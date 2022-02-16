@@ -5,6 +5,7 @@ use futures::join;
 use futures::stream::{StreamExt, TryStreamExt};
 use glob::glob;
 use indoc::indoc;
+use log::{error, info};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
@@ -130,7 +131,7 @@ impl<'a> Capsule<'a> {
     }
 
     async fn execute_command(&self, inputs: &InputHashBundle, program_run: &mut AtomicBool) -> Result<ExitStatus> {
-        eprintln!("Executing command: {:?}", self.config.command_to_run);
+        info!("Executing command: {:?}", self.config.command_to_run);
         if self.config.command_to_run.is_empty() {
             Err(anyhow!(USAGE))
         } else {
@@ -166,7 +167,7 @@ impl<'a> Capsule<'a> {
                 });
 
                 if non_determinism {
-                    eprintln!(
+                    error!(
                         indoc! {"
                         Non-determinism detected:
                         Old: {:?}
@@ -198,30 +199,30 @@ impl<'a> Capsule<'a> {
                 // or logging, but the wrapped binary had already been run by now.
                 if let Ok(result) = logger_result {
                     result.unwrap_or_else(|err| {
-                        eprintln!("Failed to log results for observability: {}", err);
+                        error!("Failed to log results for observability: {}", err);
                     });
                 } else {
-                    eprintln!("Time out logging results for observability");
+                    error!("Time out logging results for observability");
                 }
 
                 if let Ok(result) = cache_result {
                     result.unwrap_or_else(|err| {
-                        eprintln!("Failed to write entry to cache: {}", err);
+                        error!("Failed to write entry to cache: {}", err);
                     });
                 } else {
-                    eprintln!("Time out writing entry to cache");
+                    error!("Time out writing entry to cache");
                 }
 
                 if let Ok(result) = upload_result {
                     result.unwrap_or_else(|err| {
-                        eprintln!("Failed to upload files to cache: {}", err);
+                        error!("Failed to upload files to cache: {}", err);
                     });
                 } else {
-                    eprintln!("Time out uploading files to cache");
+                    error!("Time out uploading files to cache");
                 }
             }
             Err(err) => {
-                eprintln!("Failed to get command outputs: {}", err);
+                error!("Failed to get command outputs: {}", err);
             }
         }
         Ok(exit_status)
@@ -245,7 +246,7 @@ impl<'a> Capsule<'a> {
                         let mut file_body_reader = self.caching_backend.download_object_file(item_hash).await?;
                         tokio::io::copy(&mut file_body_reader, &mut file_stream).await?;
                         file_stream.flush().await?;
-                        eprintln!("file {} downloaded, verifying hash", fileoutput.filename.display());
+                        info!("file {} downloaded, verifying hash", fileoutput.filename.display());
                         // Calculating the SHA256 is a long CPU bound op, better do in a thread.
                         let tmp_path = path.to_path_buf();
                         let received_hash = task::spawn_blocking(move || file_hash(&tmp_path)).await??;
@@ -306,7 +307,7 @@ impl<'a> Capsule<'a> {
             return Ok(0);
         }
 
-        eprintln!("Capsule inputs hash: {}", inputs.hash);
+        info!("Capsule inputs hash: {}", inputs.hash);
 
         // In passive mode, skip everything, except reading inputs as we still want to fill
         // CAPSULE_INPUTS_HASH with data about the capsule inputs.
@@ -327,7 +328,7 @@ impl<'a> Capsule<'a> {
         .context("Looking in cache")?; // Inner Result wrapping is from the lookup itself.
         if let Some(ref lookup_result) = lookup_result {
             let log_cache_hit = |msg: &str| {
-                println!(
+                info!(
                     "Cache hit on {} from {} ({}): {}",
                     self.capsule_id(),
                     lookup_result.source,
@@ -385,7 +386,7 @@ impl<'a> Capsule<'a> {
                                 .log(&inputs, &lookup_result.outputs, true, false)
                                 .await
                                 .unwrap_or_else(|err| {
-                                    eprintln!("Failed to log results for observability: {}", err);
+                                    error!("Failed to log results for observability: {}", err);
                                 });
                             return Ok(lookup_result.outputs.result_code().unwrap_or(Self::DEFAULT_EXIT_CODE));
                         }
@@ -394,7 +395,7 @@ impl<'a> Capsule<'a> {
                         }
                     }
                 } else {
-                    eprintln!("Time out downloading files");
+                    error!("Time out downloading files");
                 }
             }
         }
