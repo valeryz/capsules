@@ -52,15 +52,15 @@ pub struct Config {
     pub capsule_job: Option<String>,
 
     #[serde(default)]
-    #[serde(rename="input")]
+    #[serde(rename = "input")]
     pub input_files: Vec<String>,
 
     #[serde(default)]
-    #[serde(rename="tool_tag")]
+    #[serde(rename = "tool_tag")]
     pub tool_tags: Vec<String>,
 
     #[serde(default)]
-    #[serde(rename="output")]
+    #[serde(rename = "output")]
     pub output_files: Vec<String>,
 
     #[serde(default)]
@@ -119,19 +119,22 @@ pub struct Config {
     pub inputs_hash_output: bool,
 
     #[serde(default = "default_concurrent_download_max")]
-    #[derivative(Default(value="default_concurrent_download_max()"))]
+    #[derivative(Default(value = "default_concurrent_download_max()"))]
     pub concurrent_download_max: usize,
 
     #[serde(default = "default_concurrent_upload_max")]
-    #[derivative(Default(value="default_concurrent_upload_max()"))]
+    #[derivative(Default(value = "default_concurrent_upload_max()"))]
     pub concurrent_upload_max: usize,
 }
 
 // Ugliness until serde supports normal default parameters.
 // TODO: find a way to nicely provide defaults for all parameters.
-fn default_concurrent_download_max() -> usize { 3 }
-fn default_concurrent_upload_max() -> usize { 3 }
-
+fn default_concurrent_download_max() -> usize {
+    3
+}
+fn default_concurrent_upload_max() -> usize {
+    3
+}
 
 impl Config {
     // Merge one config (e.g. Capsule.toml) into another (~/.capsules.toml)

@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result, Context};
+use anyhow::{anyhow, Context, Result};
 use assert_cmd;
 use std::fs;
 use std::io::{self, Write};
@@ -13,10 +13,10 @@ use nix::unistd;
 use rand::Rng;
 
 use rusoto_core::region::Region;
-use rusoto_s3::{DeleteBucketRequest, GetObjectRequest, PutObjectRequest, S3 as _, S3Client};
+use rusoto_s3::{DeleteBucketRequest, GetObjectRequest, PutObjectRequest, S3Client, S3 as _};
 
-use tokio::runtime::Runtime;
 use tokio::io::AsyncReadExt;
+use tokio::runtime::Runtime;
 
 use tempfile::{self, TempDir};
 
@@ -145,11 +145,12 @@ pub fn remove_bucket(port: u16, bucket: &str) {
     std::env::set_var("AWS_SECRET_ACCESS_KEY", "minioadmin");
     let req = DeleteBucketRequest {
         bucket: bucket.to_string(),
-        expected_bucket_owner: None
+        expected_bucket_owner: None,
     };
     let client = S3Client::new(Region::Custom {
         name: "eu-central-1".to_string(),
-        endpoint: format!("http://127.0.0.1:{}", port) });
+        endpoint: format!("http://127.0.0.1:{}", port),
+    });
 
     let rt = Runtime::new().unwrap();
     rt.block_on(async move {
@@ -172,7 +173,8 @@ pub fn put_object(port: u16, bucket: &str, key: &str, data: &[u8]) {
     };
     let client = S3Client::new(Region::Custom {
         name: "eu-central-1".to_string(),
-        endpoint: format!("http://127.0.0.1:{}", port) });
+        endpoint: format!("http://127.0.0.1:{}", port),
+    });
 
     let rt = Runtime::new().unwrap();
     rt.block_on(async move {
@@ -192,7 +194,8 @@ pub fn get_object(port: u16, bucket: &str, key: &str) -> Result<Vec<u8>> {
     };
     let client = S3Client::new(Region::Custom {
         name: "eu-central-1".to_string(),
-        endpoint: format!("http://127.0.0.1:{}", port) });
+        endpoint: format!("http://127.0.0.1:{}", port),
+    });
 
     let rt = Runtime::new().unwrap();
     let body = rt.block_on(async move {

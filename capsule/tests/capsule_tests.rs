@@ -1,7 +1,7 @@
+use anyhow::{Context, Result};
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::Read;
-use sha2::{Digest, Sha256};
-use anyhow::{Context, Result};
 
 mod common;
 
@@ -93,16 +93,7 @@ fn test_cache_expiration() {
     // Run it first time.
     common::capsule(
         setup_data.port,
-        &[
-            "-c",
-            "wtf",
-            "-t",
-            "foo",
-            "--",
-            "/bin/bash",
-            "-c",
-            &command,
-        ],
+        &["-c", "wtf", "-t", "foo", "--", "/bin/bash", "-c", &command],
     );
     // Creating
     println!("Checking file {:?}", side_effect);
@@ -116,16 +107,7 @@ fn test_cache_expiration() {
     let command = format!("echo 'wtf' > {}", side_effect.to_str().unwrap());
     common::capsule(
         setup_data.port,
-        &[
-            "-c",
-            "wtf",
-            "-t",
-            "foo",
-            "--",
-            "/bin/bash",
-            "-c",
-            &command,
-        ],
+        &["-c", "wtf", "-t", "foo", "--", "/bin/bash", "-c", &command],
     );
     println!("Checking file {:?}", side_effect);
     // Verify that the second time the side effect is present
@@ -144,13 +126,17 @@ fn test_inputs_hash() {
         .expect("Couldn't execute capsule");
 
     assert!(output.status.success());
-    assert_eq!(output.stdout, b"6683fee73b2d88cd8414b00fdc6ea103e6e3d47f23dd8d67379b5be41fc72273");
+    assert_eq!(
+        output.stdout,
+        b"6683fee73b2d88cd8414b00fdc6ea103e6e3d47f23dd8d67379b5be41fc72273"
+    );
 }
 
 fn file_hash(filename: &std::path::PathBuf) -> Result<String> {
     const BUFSIZE: usize = 4096;
     let mut acc = Sha256::new();
-    let mut f = fs::File::open(filename).with_context(|| format!("Reading input file '{}'", filename.to_string_lossy()))?;
+    let mut f =
+        fs::File::open(filename).with_context(|| format!("Reading input file '{}'", filename.to_string_lossy()))?;
     let mut buf: [u8; BUFSIZE] = [0; BUFSIZE];
     loop {
         let rd = f.read(&mut buf)?;
@@ -170,7 +156,6 @@ fn test_cas_optimization() {
     // Make sure the bucket exists before we start the test
     common::put_object(setup_data.port, "capsule-objects", "foo", b"bar");
 
-    
     let command = format!("echo 'foo' > {}", output.to_str().unwrap());
     // Run it for the first time.
     common::capsule(
@@ -219,6 +204,8 @@ fn test_cas_optimization() {
 
     let _ = fs::remove_file(&output);
 
-    assert_eq!(b"bar".to_vec(),
-               common::get_object(setup_data.port, "capsule-objects", &key).unwrap());
+    assert_eq!(
+        b"bar".to_vec(),
+        common::get_object(setup_data.port, "capsule-objects", &key).unwrap()
+    );
 }

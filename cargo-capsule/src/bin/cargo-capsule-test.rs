@@ -234,7 +234,10 @@ fn exec(config: &mut Config) -> CliResult {
             .args(["--package", &package])
             .args(&pass_args);
 
-        println!("capsule {}", shell_words::join(command.get_args().map(OsStr::to_string_lossy)));
+        println!(
+            "capsule {}",
+            shell_words::join(command.get_args().map(OsStr::to_string_lossy))
+        );
         command
             .spawn()
             .context("Spawning cargo test")?
