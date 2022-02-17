@@ -200,6 +200,14 @@ impl Config {
                     .multiple_occurrences(false),
             )
             .arg(
+                Arg::new("workspace_root")
+                    .help("Workspace root for paths starting with a double slash")
+                    .short('w')
+                    .long("workspace_root")
+                    .takes_value(true)
+                    .multiple_occurrences(false),
+            )
+            .arg(
                 Arg::new("capsule_job")
                     .help("The ID of the capsule job")
                     .short('j')
@@ -433,14 +441,15 @@ impl Config {
 
         config.backend = Backend::Dummy; // default caching backend.
         for matches in match_sources {
+            config.workspace_root = matches.value_of("workspace_root").map(Into::into);
             if let Some(inputs) = matches.values_of("input") {
-                config.input_files.extend(inputs.map(Into::into)); //|x| x.to_owned()));
+                config.input_files.extend(inputs.map(Into::into));
             }
             if let Some(tool_tags) = matches.values_of("tool_tag") {
                 config.tool_tags.extend(tool_tags.map(|x| x.to_owned()));
             }
             if let Some(outputs) = matches.values_of("output") {
-                config.output_files.extend(outputs.map(Into::into)); // |x| x.to_owned()));
+                config.output_files.extend(outputs.map(Into::into));
             }
             if matches.is_present("capture_stdout") {
                 config.capture_stdout = Some(true);
@@ -898,5 +907,43 @@ mod tests {
             )
             .unwrap());
         assert!(!config.outputs_match(vec![].into_iter()).unwrap());
+    }
+
+    #[test]
+    #[serial]
+    fn test_workspace_root() {
+        let config = Config::new(
+            vec![
+                "placebo",
+                "-w",
+                "/foo/bar",
+                "-c",
+                "my_capsule",
+                "-i",
+                "//my/input/file",
+                "-i",
+                "my/input/file2",
+                "-i",
+                "/my/input/file3",
+                "-o",
+                "//my/output/file",
+                "--",
+                "/bin/echo",
+            ],
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(config.workspace_root.as_ref().unwrap(), "/foo/bar");
+        assert_eq!(config.input_files[0], WorkspacePath::from("//my/input/file"));
+        assert_eq!(config.output_files[0], WorkspacePath::from("//my/output/file"));
+        assert_eq!(config.input_files[0].to_path(&config.workspace_root).unwrap(),
+                   PathBuf::from("/foo/bar/my/input/file"));
+        assert_eq!(config.input_files[1].to_path(&config.workspace_root).unwrap(),
+                   PathBuf::from("my/input/file2"));
+        assert_eq!(config.input_files[2].to_path(&config.workspace_root).unwrap(),
+                   PathBuf::from("/my/input/file3"));
+        assert_eq!(config.output_files[0].to_path(&config.workspace_root).unwrap(),
+                   PathBuf::from("/foo/bar/my/output/file"));
     }
 }
