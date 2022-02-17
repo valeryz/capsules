@@ -90,9 +90,17 @@ Options below could be provided either as command line arguments, or as entries 
 
   * `--s3_bucket_objects`: The bucket used for objects (blobs) as Content Addressable Storage (CAS). Capsules use separate bucktets for key/value lookup of metainformation and for the blobs themselves. This allows to make different choices for the setup of those buckets.
 
-  * `--s3_endpoint`: S3 endpoint
+  * `--s3_endpoint`: S3 endpoint for the cache, and for CAS uploads/downloads when the latter is not configured with one of the below options.
 
-  * `--s3_region`: S3 region
+  * `--s3_region`: S3 region for the cache, and for CAS uploads/downloads when the latter is not configured with one of the below options.
+
+  * `--s3_uploads_endpoint`: S3 endpoint for Content Addressable Store (CAS) uploads. Capsules support asymmetric configuration where uploads and downloads use different endpoints/regions. If not specified, `s3_endpoint` will be used.
+
+  * `--s3_uploads_region`: S3 region for Content Addressable Store (CAS) uploads. If not specified, `s3_region` will be used.
+
+  * `--s3_downloads_endpoint`: S3 endpoint for Content Addressable Store (CAS) downloads. If not specified, `s3_endpoint` will be used.
+
+  * `--s3_downloads_region`: S3 region for Content Addressable Store (CAS) downloads. If not specified, `s3_region` will be used.
 
 Authentication for S3 is set in the same way as in AWS CLI, using `~/.aws/credentials`.  See https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html.
 
