@@ -71,7 +71,7 @@ fn hash_details_to_json(bundle: &InputHashBundle) -> serde_json::Value {
         let value = serde_json::Value::String(hash.to_string());
         match input {
             Input::File(filename) => {
-                file_map.insert(filename.to_string_lossy().into(), value);
+                file_map.insert(filename.to_string(), value);
             }
             Input::ToolTag(tool_tag) => {
                 tool_tag_map.insert(tool_tag.to_string(), value);
@@ -100,7 +100,7 @@ fn output_hash_details_to_json(bundle: &OutputHashBundle) -> serde_json::Value {
         let value = serde_json::Value::String(hash.to_string());
         match output {
             Output::File(file_output) => {
-                file_map.insert(format!("{}", file_output.filename.to_string_lossy()), value);
+                file_map.insert(file_output.filename.to_string(), value);
             }
             Output::ExitCode(code) => {
                 exit_code = Some(*code);

@@ -64,11 +64,13 @@ Options below could be provided either as command line arguments, or as entries 
 
 ## Specifying Inputs and Outputs
 
-  * `--input (-i)`: Specify an input file. There could be multiple `-i` options. In TOML, it should be an array. Globs are supported, e.g. `-i "../gitlab-runner-tmp/**/*"`, or, to select all files below current directory, use `-i "**/*"`.
+  * `--workspace_root (-w)`: Specifies the workspace root, relative to which one can specify inputs/outputs using bazel like syntax, starting with double slashes (e.g. `//ic-os/guestos/scripts/*`)
+
+  * `--input (-i)`: Specify an input file. There could be multiple `-i` options. In TOML, it should be an array. Globs are supported, e.g. `-i "../gitlab-runner-tmp/**/*"`, or, to select all files below current directory, use `-i "**/*"`. Supports double slash syntax relative to the workspace root, also with patterns e.g. `//subdir/**/*`
 
   * `--tool_tag (-t)`: Specify a tool tag. Tool tags are opaque strings that are added to the hash of the inputs, that are not representable as an input file. For example, hash of the docker image, compiler version, and so on. There could be multiple `-i` options. In TOML, it should be an array.
 
-  * `--output (-o)`: Specify an output file. This is an artifact produced by the command we are wrapping. The path will be recorded in the cache as is. Therefore it should likely be a relative path, unless the invocation of the given capsule ID is always performed in the same directory. This may change in the future, if capsule supports project root relative paths. In TOML, it should be an array.  Globs are also supported for `-o`.
+  * `--output (-o)`: Specify an output file. This is an artifact produced by the command we are wrapping. The path will be recorded in the cache as is. Therefore it should likely be a relative path, unless the invocation of the given capsule ID is always performed in the same directory. This may change in the future, if capsule supports project root relative paths. In TOML, it should be an array.  Globs are also supported for `-o`.  Supports double slash syntax relative to the workspace root, also with patterns e.g. `//subdir/**/*`
 
   * `--capture_stdout`: Whether stdout should be captured as one of the output files and returned on cache hit. Not implemented at the moment.
 
