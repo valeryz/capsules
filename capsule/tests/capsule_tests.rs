@@ -100,7 +100,7 @@ fn test_s3_cache_hit_ws_root() {
         &[
             "-c",
             "wtf",
-            "-w",
+            "--workspace_root",
             workspace_root,
             "-b",
             "s3",
