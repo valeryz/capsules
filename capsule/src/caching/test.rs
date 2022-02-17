@@ -107,6 +107,7 @@ impl CachingBackend for TestBackend {
 
     async fn upload_object_file(
         &self,
+        name: String,
         key: &str,
         mut file: Pin<Box<dyn AsyncRead + Send>>,
         _content_length: u64,
@@ -115,7 +116,7 @@ impl CachingBackend for TestBackend {
             time::sleep(Duration::from_millis(500)).await;
         }
         if self.test_config.failing_upload_files {
-            Err(anyhow!("Failed to upload object file"))
+            Err(anyhow!("Failed to upload object file {}", name))
         } else {
             let mut buf = Vec::new();
             file.read_to_end(&mut buf).await?;

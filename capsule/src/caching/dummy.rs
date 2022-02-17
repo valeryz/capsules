@@ -30,6 +30,7 @@ impl CachingBackend for DummyBackend {
 
     async fn upload_object_file(
         &self,
+        _name: String,
         _item_hash: &str,
         _file: Pin<Box<dyn AsyncRead + Send>>,
         _content_length: u64,
