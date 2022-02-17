@@ -85,6 +85,66 @@ fn test_s3_cache_hit() {
 }
 
 #[test]
+fn test_s3_cache_hit_ws_root() {
+    let setup_data = common::setup(); // RAII - clean up on destruction.
+    std::fs::create_dir_all(setup_data.directory.as_ref().unwrap().path().join("subdir")).unwrap();
+    let input = setup_data.path("subdir/input.txt");
+    std::fs::write(&input, "input data").unwrap();
+
+    let side_effect = setup_data.path("side_effect.txt");
+    let command = format!("echo 'hello!' > {}", side_effect.to_str().unwrap());
+    let workspace_root = setup_data.directory.as_ref().unwrap().path().to_str().unwrap();
+    // Run it first time.
+    common::capsule(
+        setup_data.port,
+        &[
+            "-c",
+            "wtf",
+            "-w",
+            workspace_root,
+            "-b",
+            "s3",
+            "-i",
+            "//subdir/input.txt",
+            "--",
+            "/bin/bash",
+            "-c",
+            &command,
+        ],
+    );
+    // Creating
+    println!("Checking file {:?}", side_effect);
+    assert!(side_effect.exists());
+    std::fs::remove_file(side_effect).unwrap();
+
+    // Run it second time.
+    let side_effect = setup_data.path("side_effect_2.txt");
+    let command = format!("echo 'wtf' > {}", side_effect.to_str().unwrap());
+    common::capsule(
+        setup_data.port,
+        &[
+            "-c",
+            "wtf",
+            "-w",
+            workspace_root,
+            "-b",
+            "s3",
+            "-i",
+            "//subdir/input.txt",
+            "--",
+            "/bin/bash",
+            "-c",
+            &command,
+        ],
+    );
+    println!("Checking file {:?}", side_effect);
+    // Verify that the second time the side effect is absent.
+    assert!(!side_effect.exists());
+}
+
+
+
+#[test]
 fn test_cache_expiration() {
     let setup_data = common::setup(); // RAII - clean up on destruction.
 

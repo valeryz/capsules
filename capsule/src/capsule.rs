@@ -84,7 +84,7 @@ impl<'a> Capsule<'a> {
                 }
             }
             if file_count == 0 {
-                return Err(anyhow!("Pattern '{:?}' didn't match any files", file_pattern));
+                return Err(anyhow!("Pattern '{}' didn't match any files", file_pattern));
             }
         }
 
