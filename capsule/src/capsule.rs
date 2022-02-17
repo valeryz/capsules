@@ -252,6 +252,7 @@ impl<'a> Capsule<'a> {
         for (item, item_hash) in &outputs.hash_details {
             if let Output::File(ref fileoutput) = item {
                 if fileoutput.present {
+                    info!("Downloading file '{}' hash '{}'", fileoutput.filename, item_hash);
                     let filename = fileoutput.filename.to_path(&self.config.workspace_root)?;
                     let dir = filename.parent().context("No parent directory")?;
                     std::fs::create_dir_all(dir)?;
@@ -262,7 +263,7 @@ impl<'a> Capsule<'a> {
                         let mut file_body_reader = self.caching_backend.download_object_file(item_hash).await?;
                         tokio::io::copy(&mut file_body_reader, &mut file_stream).await?;
                         file_stream.flush().await?;
-                        info!("file {} downloaded, verifying hash", fileoutput.filename);
+                        info!("File {} downloaded, verifying hash", fileoutput.filename);
                         // Calculating the SHA256 is a long CPU bound op, better do in a thread.
                         let tmp_path = path.to_path_buf();
                         let received_hash = task::spawn_blocking(move || file_hash(&tmp_path)).await??;
