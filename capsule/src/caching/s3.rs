@@ -184,6 +184,7 @@ impl CachingBackend for S3Backend {
 
     async fn upload_object_file(
         &self,
+        name: String,
         item_hash: &str,
         file: Pin<Box<dyn AsyncRead + Send>>,
         _content_length: u64,
@@ -199,10 +200,10 @@ impl CachingBackend for S3Backend {
 
         // Objects in the content addresable storage are "immutable", so duplicate uploads can be skipped.
         if self.object_exists(request).await? {
-            info!("Skipping upload for existing object '{}'", item_hash);
+            info!("Skipping upload for {} with hash '{}'", name, item_hash);
             return Ok(());
         } else {
-            info!("Uploading the object to '{}'", item_hash);
+            info!("Uploading object {} to '{}'", name, item_hash);
         }
 
         // We cannot compress the file on the fly due to the need for specify Content-length.

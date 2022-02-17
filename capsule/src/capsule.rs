@@ -291,10 +291,12 @@ impl<'a> Capsule<'a> {
         for (item, item_hash) in &outputs.hash_details {
             if let Output::File(ref fileoutput) = item {
                 if fileoutput.present {
+                    let object_name = fileoutput.filename.to_string();
                     let file_name = fileoutput.filename.to_path(&self.config.workspace_root)?;
                     let tokio_file = tokio::fs::File::open(&file_name).await?;
                     let content_length = tokio_file.metadata().await?.len();
                     all_files_futures.push(self.caching_backend.upload_object_file(
+                        object_name,
                         item_hash,
                         Box::pin(tokio_file),
                         content_length,

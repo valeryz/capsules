@@ -27,6 +27,7 @@ pub trait CachingBackend {
     /// AsyncRead handle that allows us to keep reading the file during the async upload.
     async fn upload_object_file(
         &self,
+        name: String,
         item_hash: &str,
         file: Pin<Box<dyn AsyncRead + Send>>,
         content_length: u64,
