@@ -19,13 +19,19 @@ use sha2::{Digest, Sha256};
 // Copied with minor modifications from cargo/src/bin/cargo/commands/test.rs
 // Additionally, includes the argument --capsule_id to pass to the capsule call.
 fn create_clap_app() -> App {
-    App::new("cargo-capsule-test")
+    App::new("capsule-test")
         .settings(&[
+            AppSettings::TrailingVarArg,
             AppSettings::UnifiedHelpMessage,
             AppSettings::DeriveDisplayOrder,
-            AppSettings::DontCollapseArgsInUsage,
+            AppSettings::VersionlessSubcommands,
         ])
+        .setting(AppSettings::TrailingVarArg)
         .version(env!("CARGO_PKG_VERSION"))
+        .arg(
+            Arg::with_name("TESTNAME")
+                .help("If specified, only run tests containing this string in their names"),
+        )
         .arg(
             Arg::with_name("args")
                 .help("Arguments for the test binary")
@@ -110,6 +116,15 @@ fn find_args_to_pass(orig_args: &ArgMatches) -> Vec<OsString> {
             args.extend(orig_args.values_of(opt_arg).unwrap().map(Into::into));
         }
     }
+    // Add TESTNAME
+    if let Some(testname) = orig_args.value_of("TESTNAME") {
+        args.push(testname.into());
+    }
+    // Add all test args
+    if let Some(test_args) = orig_args.values_of("args") {
+        args.push("--".into());
+        args.extend(test_args.map(Into::into));
+    }
     args
 }
 
@@ -122,12 +137,12 @@ fn args_hash(args: &[OsString]) -> String {
 }
 
 fn debug_enabled() -> bool {
-    env::var_os("CARGO_CAPSULE_DEBUG").unwrap_or_default() != "0"
+    env::var_os("CARGO_CAPSULE_DEBUG").unwrap_or_default() == "1"
 }
 
 fn exec(config: &mut Config) -> CliResult {
     let app = create_clap_app();
-    let args = app.get_matches_safe()?;
+    let args = app.get_matches_from_safe(std::env::args_os().skip(1))?;
     let ws = args.workspace(config)?;
 
     let pass_args = find_args_to_pass(&args);
