@@ -16,10 +16,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize the builder
+    // Initialize logging. Default is INFO level, can be overridden in CAPSULE_LOG
     env_logger::Builder::new()
-        .parse_env("CAPSULE_LOG")
         .filter_level(log::LevelFilter::Info)
+        .parse_env("CAPSULE_LOG")
         .init();
 
     // Running of the capsule may fail. It may fail either before the wrapped program

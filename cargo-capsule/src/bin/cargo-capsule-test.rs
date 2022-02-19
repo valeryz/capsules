@@ -13,19 +13,25 @@ use cargo::ops;
 use cargo::util::command_prelude::*;
 use cargo::util::config;
 
+use log::Level::Debug;
+use log::{debug, info, log_enabled};
+
 use sha2::{Digest, Sha256};
 
 // Accept a subset of cargo test options.
 // Copied with minor modifications from cargo/src/bin/cargo/commands/test.rs
 // Additionally, includes the argument --capsule_id to pass to the capsule call.
 fn create_clap_app() -> App {
-    App::new("cargo-capsule-test")
+    App::new("capsule-test")
         .settings(&[
+            AppSettings::TrailingVarArg,
             AppSettings::UnifiedHelpMessage,
             AppSettings::DeriveDisplayOrder,
-            AppSettings::DontCollapseArgsInUsage,
+            AppSettings::VersionlessSubcommands,
         ])
+        .setting(AppSettings::TrailingVarArg)
         .version(env!("CARGO_PKG_VERSION"))
+        .arg(Arg::with_name("TESTNAME").help("If specified, only run tests containing this string in their names"))
         .arg(
             Arg::with_name("args")
                 .help("Arguments for the test binary")
@@ -110,6 +116,15 @@ fn find_args_to_pass(orig_args: &ArgMatches) -> Vec<OsString> {
             args.extend(orig_args.values_of(opt_arg).unwrap().map(Into::into));
         }
     }
+    // Add TESTNAME
+    if let Some(testname) = orig_args.value_of("TESTNAME") {
+        args.push(testname.into());
+    }
+    // Add all test args
+    if let Some(test_args) = orig_args.values_of("args") {
+        args.push("--".into());
+        args.extend(test_args.map(Into::into));
+    }
     args
 }
 
@@ -121,13 +136,9 @@ fn args_hash(args: &[OsString]) -> String {
     format!("{:x}", acc.finalize())
 }
 
-fn debug_enabled() -> bool {
-    env::var_os("CARGO_CAPSULE_DEBUG").unwrap_or_default() != "0"
-}
-
 fn exec(config: &mut Config) -> CliResult {
     let app = create_clap_app();
-    let args = app.get_matches_safe()?;
+    let args = app.get_matches_from_safe(std::env::args_os().skip(1))?;
     let ws = args.workspace(config)?;
 
     let pass_args = find_args_to_pass(&args);
@@ -137,9 +148,7 @@ fn exec(config: &mut Config) -> CliResult {
 
     // let test_args: Vec<&'static str> = vec![];
 
-    if debug_enabled() {
-        println!("Workspace: \n{:?}\n", ws);
-    }
+    debug!("Workspace: \n{:?}\n", ws);
 
     let interner = UnitInterner::new();
 
@@ -151,7 +160,7 @@ fn exec(config: &mut Config) -> CliResult {
         ..
     } = ops::create_bcx(&ws, &compile_opts, &interner)?;
 
-    if debug_enabled() {
+    if log_enabled!(Debug) {
         let _ = unit_graph::emit_serialized_unit_graph(roots, unit_graph, ws.config())?;
     }
 
@@ -209,13 +218,11 @@ fn exec(config: &mut Config) -> CliResult {
         let capsule_id = format!("{}-{}", capsule_id, package);
         let capsule_args = inputs.iter().flat_map(|(a, b)| [a, b]);
 
-        if debug_enabled() {
-            println!(
-                "Inputs for {:?} : {:?}\n\n",
-                package,
-                inputs.iter().map(|(a, b)| format!("{} {} ", a, b)).collect::<Vec<_>>()
-            );
-        }
+        debug!(
+            "Inputs for {:?} : {:?}\n\n",
+            package,
+            inputs.iter().map(|(a, b)| format!("{} {} ", a, b)).collect::<Vec<_>>()
+        );
 
         // Call 'cargo test' via capsule for the given packged. If
         // nothing changed for this package, it will be cached.
@@ -232,7 +239,7 @@ fn exec(config: &mut Config) -> CliResult {
             .args(["--package", &package])
             .args(&pass_args);
 
-        println!(
+        info!(
             "capsule {}",
             shell_words::join(command.get_args().map(OsStr::to_string_lossy))
         );
@@ -247,7 +254,12 @@ fn exec(config: &mut Config) -> CliResult {
 }
 
 fn main() {
-    // Create
+    // Initialize logging. Default is INFO level, can be overridden in CAPSULE_LOG
+    env_logger::Builder::new()
+        .filter_module("cargo_capsule_test", log::LevelFilter::Info)
+        .parse_env("CAPSULE_LOG")
+        .init();
+
     let mut config = match config::Config::default() {
         Ok(cfg) => cfg,
         Err(e) => {
