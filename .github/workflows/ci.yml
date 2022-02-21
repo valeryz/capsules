@@ -134,3 +134,14 @@ jobs:
           asset_path: ./target/release/cargo-capsule-test
           asset_name: cargo-capsule-test
           asset_content_type: application/octet-stream
+      - name: Upload cargo-capsule-build binary
+        if: ${{ github.ref_type == 'tag' }}
+        id: upload-release-asset-cargo-capsule-build
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./target/release/cargo-capsule-build
+          asset_name: cargo-capsule-build
+          asset_content_type: application/octet-stream
