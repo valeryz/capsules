@@ -937,13 +937,21 @@ mod tests {
         assert_eq!(config.workspace_root.as_ref().unwrap(), "/foo/bar");
         assert_eq!(config.input_files[0], WorkspacePath::from("//my/input/file"));
         assert_eq!(config.output_files[0], WorkspacePath::from("//my/output/file"));
-        assert_eq!(config.input_files[0].to_path(&config.workspace_root).unwrap(),
-                   PathBuf::from("/foo/bar/my/input/file"));
-        assert_eq!(config.input_files[1].to_path(&config.workspace_root).unwrap(),
-                   PathBuf::from("my/input/file2"));
-        assert_eq!(config.input_files[2].to_path(&config.workspace_root).unwrap(),
-                   PathBuf::from("/my/input/file3"));
-        assert_eq!(config.output_files[0].to_path(&config.workspace_root).unwrap(),
-                   PathBuf::from("/foo/bar/my/output/file"));
+        assert_eq!(
+            config.input_files[0].to_path(&config.workspace_root).unwrap(),
+            PathBuf::from("/foo/bar/my/input/file")
+        );
+        assert_eq!(
+            config.input_files[1].to_path(&config.workspace_root).unwrap(),
+            PathBuf::from("my/input/file2")
+        );
+        assert_eq!(
+            config.input_files[2].to_path(&config.workspace_root).unwrap(),
+            PathBuf::from("/my/input/file3")
+        );
+        assert_eq!(
+            config.output_files[0].to_path(&config.workspace_root).unwrap(),
+            PathBuf::from("/foo/bar/my/output/file")
+        );
     }
 }

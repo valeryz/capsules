@@ -142,8 +142,6 @@ fn test_s3_cache_hit_ws_root() {
     assert!(!side_effect.exists());
 }
 
-
-
 #[test]
 fn test_cache_expiration() {
     let setup_data = common::setup(); // RAII - clean up on destruction.
