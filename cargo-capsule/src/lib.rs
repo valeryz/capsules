@@ -2,16 +2,17 @@ use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::OsStrExt;
+use std::path::{Path};
 use std::process::Command;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
+
+use cargo::core::compiler::{CompileKind, FileFlavor, unit_graph, UnitInterner};
 use cargo::core::shell::Shell;
+use cargo::core::{Source, TargetKind};
 use cargo::util::command_prelude::*;
 use cargo::util::config;
 use cargo::CliResult;
-
-use cargo::core::compiler::{unit_graph, BuildContext, UnitInterner};
-use cargo::core::Source;
 use cargo::ops;
 
 use log::Level::Debug;
@@ -27,10 +28,25 @@ fn args_hash(args: &[OsString]) -> String {
     format!("{:x}", acc.finalize())
 }
 
+fn normalize_file(file: &Path, workspace_root: &Option<&str>) -> String {
+    if let Some(root) = workspace_root {
+        match file.strip_prefix(root) {
+            Ok(path) => format!("//{}", path.display()),
+            Err(_) => file.to_string_lossy().to_string(),
+        }
+    } else {
+        file.to_string_lossy().to_string()
+    }
+}
+
 pub trait CargoCapsuleCommand {
     fn command(&self) -> &'static str;
 
     fn mode(&self) -> CompileMode;
+
+    fn binary_outputs(&self) -> bool {
+        false
+    }
 
     fn create_clap_app(&self) -> App;
 
@@ -40,27 +56,47 @@ pub trait CargoCapsuleCommand {
         let app = self.create_clap_app();
         let args = app.get_matches_from_safe(std::env::args_os().skip(1))?;
         let ws = args.workspace(config)?;
+        let workspace_root = args.value_of("workspace_root");
 
         let pass_args = self.find_args_to_pass(&args);
         let capsule_id = args.value_of("capsule_id").expect("Capsule ID unknown");
 
-        let compile_opts = args.compile_options(config, self.mode(), Some(&ws), ProfileChecking::Custom)?;
+        let mut compile_opts = args.compile_options(config, self.mode(), Some(&ws), ProfileChecking::Custom)?;
+
+        if let Some(out_dir) = args.value_of_path("out-dir", config) {
+            compile_opts.build_config.export_dir = Some(out_dir);
+        } else if let Some(out_dir) = config.build_config()?.out_dir.as_ref() {
+            let out_dir = out_dir.resolve_path(config);
+            compile_opts.build_config.export_dir = Some(out_dir);
+        }
 
         debug!("Workspace: \n{:?}\n", ws);
 
         let interner = UnitInterner::new();
-
         // Create the build context - a structure that understands compile opts and the workspace, and builds
         // the cargo unit graph.
-        let BuildContext {
-            ref roots,
-            ref unit_graph,
-            ..
-        } = ops::create_bcx(&ws, &compile_opts, &interner)?;
+        let bcx = ops::create_bcx(&ws, &compile_opts, &interner)?;
 
         if log_enabled!(Debug) {
-            let _ = unit_graph::emit_serialized_unit_graph(roots, unit_graph, ws.config())?;
+            let _ = unit_graph::emit_serialized_unit_graph(&bcx.roots, &bcx.unit_graph, ws.config())?;
         }
+
+        // We determine the paths for host and target compilations.
+        // This is modeled after cargo/compiler/context/mod.rs, see prepare_units()
+        let dest = bcx.profiles.get_dir_name();
+        let output_host = ws.target_dir().join(&dest);
+        let mut targets = HashMap::new();
+        for kind in bcx.all_kinds.iter() {
+            if let CompileKind::Target(target) = *kind {
+                let mut output_target = ws.target_dir();
+                output_target.push(target.short_name());
+                output_target.push(dest);
+                targets.insert(target, output_target);
+            }
+        }
+
+        // Now what matters is: output_host, output_targets, export_dir, and roots,
+        // like in CompilationFiles.  But we still have to find 'outputs' somewhere.
 
         type InputSpec = HashSet<(String, String)>;
 
@@ -69,8 +105,9 @@ pub trait CargoCapsuleCommand {
         // Look at each 'root'. For each root, find all its transitive
         // deps, and add it to the package input spec for the package
         // referred to by this root.
-        for root in roots {
-            let mut deps: Vec<_> = unit_graph
+        for root in &bcx.roots {
+            let mut deps: Vec<_> = bcx
+                .unit_graph
                 .get(root)
                 .unwrap_or(&empty_deps)
                 .iter()
@@ -81,7 +118,7 @@ pub trait CargoCapsuleCommand {
             // For the transitive deps that are outside the workspace, represent them as tool tags.
             // for the deps that are inside the workspace, find all their sources, and include as -i.
             // Call cargo <test|build> -p 'target' under capsule with all these inputs.
-            let inputs: InputSpec = deps
+            let mut inputs: InputSpec = deps
                 .iter()
                 .flat_map(|dep| -> Result<Vec<(String, String)>> {
                     if dep.is_local() {
@@ -91,10 +128,7 @@ pub trait CargoCapsuleCommand {
                         src.update()?;
                         src.list_files(pkg)?
                             .iter()
-                            .map(|file| match file.as_os_str().to_str() {
-                                Some(s) => Ok(("-i".to_string(), s.to_string())),
-                                None => Err(anyhow!("invalid path")),
-                            })
+                            .map(|file| Ok(("-i".to_string(), normalize_file(file.as_path(), &workspace_root))))
                             .collect::<Result<_>>()
                     } else {
                         Ok(vec![("-t".to_string(), dep.pkg.package_id().to_string())])
@@ -102,6 +136,25 @@ pub trait CargoCapsuleCommand {
                 })
                 .flatten()
                 .collect();
+
+            if self.binary_outputs() && *root.target.kind() == TargetKind::Bin {
+                let info = bcx.target_data.info(root.kind);
+                let triple = bcx.target_data.short_name(&root.kind);
+                let (file_types, _) = info.rustc_outputs(root.mode, root.target.kind(), triple)?;
+                for file_type in file_types {
+                    if file_type.flavor == FileFlavor::Normal {
+                        let suffix = file_type.output_filename(&root.target, None);
+                        let file_name = match root.kind {
+                            CompileKind::Host => output_host.join(suffix),
+                            CompileKind::Target(target) => targets.get(&target).expect("given target").join(suffix),
+                        };
+                        inputs.insert((
+                            "-o".to_string(),
+                            normalize_file(&file_name.as_path_unlocked(), &workspace_root),
+                        ));
+                    }
+                }
+            }
 
             match package_inputs.entry(root.pkg.name().to_string()) {
                 Entry::Occupied(mut e) => e.get_mut().extend(inputs),
@@ -119,7 +172,7 @@ pub trait CargoCapsuleCommand {
             debug!(
                 "Inputs for {:?} : {:?}\n\n",
                 package,
-                inputs.iter().map(|(a, b)| format!("{} {} ", a, b)).collect::<Vec<_>>()
+                inputs.iter().map(|(a, b)| format!("{} {}", a, b)).collect::<Vec<_>>()
             );
 
             // Call 'cargo test' via capsule for the given packged. If
@@ -128,7 +181,11 @@ pub trait CargoCapsuleCommand {
             let mut command = Command::new("capsule");
             command
                 .arg("-c")
-                .arg(capsule_id)
+                .arg(capsule_id);
+            if let Some(root) = workspace_root {
+                command.arg("-w").arg(root);
+            }
+            command
                 .args(capsule_args)
                 .args(["-t", &pass_args_hash])
                 .arg("--")
@@ -155,8 +212,12 @@ pub trait CargoCapsuleCommand {
 pub fn main_exec(build: impl CargoCapsuleCommand) {
     // Initialize logging. Default is INFO level, can be overridden in CAPSULE_LOG
     env_logger::Builder::new()
-        .filter_module("cargo_capsule_test", log::LevelFilter::Info)
-        .parse_env("CARGO_CAPSULE_LOG")
+        .filter_level(log::LevelFilter::Error)
+        .filter_module("cargo_capsule", log::LevelFilter::Info)
+        .parse_filters(&format!(
+            "cargo_capsule={}",
+            std::env::var("CARGO_CAPSULE_LOG").unwrap_or("info".to_owned())
+        ))
         .init();
 
     let mut config = match config::Config::default() {
