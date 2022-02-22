@@ -137,13 +137,13 @@ pub trait CargoCapsuleCommand {
                 .flatten()
                 .collect();
 
-            if self.binary_outputs() && *root.target.kind() == TargetKind::Bin {
+            if self.binary_outputs() && matches!(*root.target.kind(), TargetKind::Bin) {
                 let info = bcx.target_data.info(root.kind);
                 let triple = bcx.target_data.short_name(&root.kind);
                 let (file_types, _) = info.rustc_outputs(root.mode, root.target.kind(), triple)?;
                 for file_type in file_types {
                     if file_type.flavor == FileFlavor::Normal {
-                        let suffix = file_type.output_filename(&root.target, None);
+                        let suffix = file_type.uplift_filename(&root.target);
                         let file_name = match root.kind {
                             CompileKind::Host => output_host.join(suffix),
                             CompileKind::Target(target) => targets.get(&target).expect("given target").join(suffix),

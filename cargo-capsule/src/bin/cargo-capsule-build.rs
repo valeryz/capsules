@@ -17,6 +17,10 @@ impl CargoCapsuleCommand for CargoCapsuleBuild {
         CompileMode::Build
     }
 
+    fn binary_outputs(&self) -> bool {
+        true
+    }
+
     // Accept a subset of cargo build
     // Copied from cargo/src/bin/cargo/commands/build.rs
     // Additionally, includes the argument --capsule_id to pass to the capsule call.
