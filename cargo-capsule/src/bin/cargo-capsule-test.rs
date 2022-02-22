@@ -44,10 +44,13 @@ impl CargoCapsuleCommand for CargoCapsuleTest {
                     .required(true),
             )
             .arg(
-                opt("workspace_root", "If given, all paths will be normalized relative to this root")
-                    .value_name("WORKSPACE_ROOT")
-                    .short("w")
-                    .required(false),
+                opt(
+                    "workspace_root",
+                    "If given, all paths will be normalized relative to this root",
+                )
+                .value_name("WORKSPACE_ROOT")
+                .short("w")
+                .required(false),
             )
             .arg(opt("quiet", "Display one character per test instead of one line").short("q"))
             .arg(opt("doc", "Test only this library's documentation"))

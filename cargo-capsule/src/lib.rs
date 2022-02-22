@@ -2,18 +2,18 @@ use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::OsStrExt;
-use std::path::{Path};
+use std::path::Path;
 use std::process::Command;
 
 use anyhow::{Context, Result};
 
-use cargo::core::compiler::{CompileKind, FileFlavor, unit_graph, UnitInterner};
+use cargo::core::compiler::{unit_graph, CompileKind, FileFlavor, UnitInterner};
 use cargo::core::shell::Shell;
 use cargo::core::{Source, TargetKind};
+use cargo::ops;
 use cargo::util::command_prelude::*;
 use cargo::util::config;
 use cargo::CliResult;
-use cargo::ops;
 
 use log::Level::Debug;
 use log::{debug, info, log_enabled};
@@ -150,7 +150,7 @@ pub trait CargoCapsuleCommand {
                         };
                         inputs.insert((
                             "-o".to_string(),
-                            normalize_file(&file_name.as_path_unlocked(), &workspace_root),
+                            normalize_file(file_name.as_path_unlocked(), &workspace_root),
                         ));
                     }
                 }
@@ -179,9 +179,7 @@ pub trait CargoCapsuleCommand {
             // nothing changed for this package, it will be cached.
             let pass_args_hash = args_hash(&pass_args);
             let mut command = Command::new("capsule");
-            command
-                .arg("-c")
-                .arg(capsule_id);
+            command.arg("-c").arg(capsule_id);
             if let Some(root) = workspace_root {
                 command.arg("-w").arg(root);
             }
@@ -216,7 +214,7 @@ pub fn main_exec(build: impl CargoCapsuleCommand) {
         .filter_module("cargo_capsule", log::LevelFilter::Info)
         .parse_filters(&format!(
             "cargo_capsule={}",
-            std::env::var("CARGO_CAPSULE_LOG").unwrap_or("info".to_owned())
+            std::env::var("CARGO_CAPSULE_LOG").unwrap_or_else(|_| "info".to_owned())
         ))
         .init();
 

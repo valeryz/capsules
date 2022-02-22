@@ -9,7 +9,6 @@ use cargo_capsule::CargoCapsuleCommand;
 struct CargoCapsuleBuild;
 
 impl CargoCapsuleCommand for CargoCapsuleBuild {
-
     fn command(&self) -> &'static str {
         "build"
     }
@@ -31,10 +30,13 @@ impl CargoCapsuleCommand for CargoCapsuleBuild {
                     .required(true),
             )
             .arg(
-                opt("workspace_root", "If given, all paths will be normalized relative to this root")
-                    .value_name("WORKSPACE_ROOT")
-                    .short("w")
-                    .required(false),
+                opt(
+                    "workspace_root",
+                    "If given, all paths will be normalized relative to this root",
+                )
+                .value_name("WORKSPACE_ROOT")
+                .short("w")
+                .required(false),
             )
             .arg(opt("quiet", "No output printed to stdout").short("q"))
             .arg_package_spec(
