@@ -114,10 +114,8 @@ impl<'a> Capsule<'a> {
                 if file.is_file() {
                     // Convert workspace relative patterns to workspace relative expansions.
                     let mode = file.metadata()?.permissions().mode();
-                    let expansion_file_name = match *file_pattern {
-                        WorkspacePath::NonWorkspace(_) => WorkspacePath::NonWorkspace(file),
-                        WorkspacePath::Workspace(_) => WorkspacePath::Workspace(file),
-                    };
+                    let expansion_file_name =
+                        WorkspacePath::from_full_path(file.as_path(), &self.config.workspace_root);
                     outputs.add_output(Output::File(FileOutput {
                         filename: expansion_file_name,
                         present: true,

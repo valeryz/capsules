@@ -622,6 +622,7 @@ impl Config {
             })
             .collect::<Result<Vec<glob::Pattern>, _>>()
             .with_context(|| "Invalid output file pattern")?;
+        assert_eq!(patterns.len(), self.output_files.len());
         let mut pattern_has_matches = vec![false; patterns.len()];
         // For each given path, try to find at least one match in the patterns.
         for path in paths {
@@ -639,9 +640,9 @@ impl Config {
             }
         }
         let mut result = true;
-        for i in 0..patterns.len() {
-            if !pattern_has_matches[i] {
-                error!("pattern {} does not have matching paths", patterns[i]);
+        for (i, has_matches) in pattern_has_matches.iter().enumerate() {
+            if !has_matches {
+                error!("pattern {} does not have matching paths", self.output_files[i]);
                 result = false;
             }
         }
