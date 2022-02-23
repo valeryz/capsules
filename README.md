@@ -41,7 +41,7 @@ capsule infrastructure errors.
 Capsules are configured in four places:
 
   * `${HOME}/.capsules.toml` configures all capsules. The file is read first, if exists, and can be used to set the defaults (such as S3 configuration).
-  * `Capsule.toml` in the current directory configures either one capsule if there's just one, or multiple capsules in the current directory. If the capsule has many inputs, it is convenient to specify them in Capsule.toml.
+  * A TOML configuration file (usually `Capsule.toml`) given with the `--file (-f)` option configures either one capsule if there's just one, or multiple capsules in the current directory. If the capsule has many inputs, it is convenient to specify them in Capsule.toml.  Note that this file has to be specified explicitly with the `-f` flag, the capsule will not be looking for a file in the current directory like Make or Bazel.
   * `CAPSULE_ARGS` environment variable: used to conveniently provide the same arguments as command line, but once for all the capsules in the child processes. Best used in a CI pipeline configuration to propagate configuration that is specific to a CI pipeline and is identical for all capsule instances.
   * Command line arguments: the most specific configuration for a given capsule instnance.
 
@@ -53,6 +53,8 @@ Options below could be provided either as command line arguments, or as entries 
 ## Capsule Invocation Options
 
   * `--capsule_id (-c)`: ID of the capsule instance. All caching is done withing a specific capsule instance identified by this ID. This option is required in most invocations of capsule, except `--passive` and `--inputs_hash`. If capsule ID is not specified on the command line or `CAPSULE_ARGS`, it will attempt to find `Capsules.toml`, and if has exactly one section, the name of that section will be used as capsule ID. If it still cannot be found, the capsule fails (but still executes the wrapped command!).
+
+  * `--file (-f)`: Path to a TOML configuration file, with an optional suffix defining the section. Workspace root relative syntax works. E.g. `-f //my_subdir/Capsule.toml:my_capsule_id`.  If no capsule ID is given with the `-c` option, this suffix will also define the capsule ID.
 
   * `--passive`: Used to disable capsule functionality. In this mode, the capsule does nothing except calling the wrapped command - it doesn't look up in the cache, doesn't write observabiltiy logs etc. It is convenient to set in CAPSULE_ARGS on CI when you need to disable all capsules.
 
@@ -81,7 +83,7 @@ Options below could be provided either as command line arguments, or as entries 
 
   * `--backend (-b)`: Which backend to use. Possible options are `s3` and `dummy` (default).
 
-  * `--cache_failures (-f)`: Whether to use cached failed invocations of the command. The default is false, if the cache hit finds the non-zero exit status, the command will be run again. This is useful for caching tests, and detecting their flakiness, as this will be triggered as non-determinism.
+  * `--cache_failure`: Whether to use cached failed invocations of the command. The default is false, if the cache hit finds the non-zero exit status, the command will be run again. This is useful for caching tests, and detecting their flakiness, as this will be triggered as non-determinism.
 
   * `--capsule_job (-j)`: Some opaque representaiton of the original capsule invocation from which the cache entry is taken. If the capsule ends up writing a cache entry, it will store this parameter in the cache entry. On cache hit, capsule will log this ID. This will allow to investigate invalid cache hits, by understanding where the cache entry is coming from. In GitLab, it makes sense to set this variable to the URL of the job.
 

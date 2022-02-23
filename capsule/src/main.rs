@@ -33,7 +33,6 @@ async fn main() -> Result<()> {
         let config = Config::new(
             env::args(),
             default_toml.as_ref().map(Path::new),
-            Some(Path::new("Capsule.toml")),
         )?;
         // First, instantiate our caching backend (S3, Dummy, or possibly other in the future).
         let backend: Box<dyn CachingBackend> = match config.backend {
