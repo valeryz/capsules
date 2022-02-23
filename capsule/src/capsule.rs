@@ -443,7 +443,7 @@ mod tests {
     #[serial]
     fn test_empty_capsule() {
         let backend = dummy::DummyBackend::default();
-        let config = Config::new(["capsule", "-c", "wtf", "--", "/bin/echo"].iter(), None, None).unwrap();
+        let config = Config::new(["capsule", "-c", "wtf", "--", "/bin/echo"].iter(), None).unwrap();
         let capsule = Capsule::new(&config, &backend, &Dummy);
         assert_eq!(capsule.read_inputs().unwrap().hash, EMPTY_SHA256);
     }
@@ -466,7 +466,6 @@ mod tests {
             ]
             .iter(),
             None,
-            None,
         )
         .unwrap();
         let capsule = Capsule::new(&config, &backend, &Dummy);
@@ -484,7 +483,6 @@ mod tests {
         let config = Config::new(
             ["capsule", "-c", "wtf", "-i", "/nonexistent-glob", "--", "/bin/echo"].iter(),
             None,
-            None,
         )
         .unwrap();
         let capsule = Capsule::new(&config, &backend, &Dummy);
@@ -497,7 +495,6 @@ mod tests {
         let backend = dummy::DummyBackend::default();
         let config = Config::new(
             ["capsule", "-c", "wtf", "-i", "/bin/echo", "--", "/bin/echo"].iter(),
-            None,
             None,
         )
         .unwrap();
@@ -513,7 +510,6 @@ mod tests {
         let backend = dummy::DummyBackend::default();
         let config = Config::new(
             ["capsule", "-c", "wtf", "-i", "***", "--", "/bin/echo"].iter(),
-            None,
             None,
         )
         .unwrap();
@@ -551,7 +547,6 @@ mod tests {
             ]
             .iter(),
             None,
-            None,
         )
         .unwrap();
         let capsule = Capsule::new(&config, &backend, &Dummy);
@@ -586,7 +581,6 @@ mod tests {
             ]
             .iter(),
             None,
-            None,
         )
         .unwrap();
         let capsule = Capsule::new(&config, &backend, &Dummy);
@@ -615,7 +609,6 @@ mod tests {
                 "/bin/echo",
             ]
             .iter(),
-            None,
             None,
         )
         .unwrap();
@@ -659,7 +652,6 @@ mod tests {
                 &format!("echo '123' > {}", out_file_1.to_str().unwrap()),
             ]
             .iter(),
-            None,
             None,
         )
         .unwrap();
@@ -706,7 +698,6 @@ mod tests {
             ]
             .iter(),
             None,
-            None,
         )
         .unwrap();
         let capsule = Capsule::new(&config, &backend, &Dummy);
@@ -741,7 +732,6 @@ mod tests {
                 &format!("echo '123' > {}", out_file_1.to_str().unwrap()),
             ]
             .iter(),
-            None,
             None,
         )
         .unwrap();
@@ -788,7 +778,6 @@ mod tests {
             ]
             .iter(),
             None,
-            None,
         )
         .unwrap();
         let capsule = Capsule::new(&config, &backend, &Dummy);
@@ -816,7 +805,6 @@ mod tests {
             ]
             .iter(),
             None,
-            None,
         )
         .unwrap();
         let capsule = Capsule::new(&config, &backend, &Dummy);
@@ -841,7 +829,6 @@ mod tests {
         );
         let config = Config::new(
             ["capsule", "-c", "wtf", "-i", "/bin/echo", "--", "/bin/echo"].iter(),
-            None,
             None,
         )
         .unwrap();
@@ -878,7 +865,6 @@ mod tests {
                 &format!("echo '123' > {}", out_file_1.to_str().unwrap()),
             ]
             .iter(),
-            None,
             None,
         )
         .unwrap();
@@ -920,7 +906,6 @@ mod tests {
                 &format!("echo '123' > {}; chmod 755 {}", out_file_name, out_file_name),
             ]
             .iter(),
-            None,
             None,
         )
         .unwrap();
@@ -969,7 +954,6 @@ mod tests {
                 "/bin/echo",
             ]
             .iter(),
-            None,
             None,
         )
         .unwrap();
@@ -1023,7 +1007,6 @@ mod tests {
             ]
             .iter(),
             None,
-            None,
         )
         .unwrap();
         let capsule = Capsule::new(&config, &backend, &Dummy);
@@ -1058,7 +1041,6 @@ mod tests {
                 &format!("echo '123' > {}", out_file_1.to_str().unwrap()),
             ]
             .iter(),
-            None,
             None,
         )
         .unwrap();
@@ -1109,7 +1091,6 @@ mod tests {
             ]
             .iter(),
             None,
-            None,
         )
         .unwrap();
         let capsule = Capsule::new(&config, &backend, &Dummy);
@@ -1158,7 +1139,6 @@ mod tests {
                 &format!("echo '123' > {}", out_file_1.to_str().unwrap()),
             ]
             .iter(),
-            None,
             None,
         )
         .unwrap();

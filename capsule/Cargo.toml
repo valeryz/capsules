@@ -2,37 +2,38 @@
 name = "capsule"
 version = "0.2.26"
 edition = "2021"
-
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 anyhow = "1.0.44"
 async-compression = { version = "0.3.12", features = ["tokio", "gzip"] }
 async-trait = "0.1.51"
-env_logger = "0.9.0"
-log = "0.4.14"
-nix = "0.22.1"
-itertools = "0.10.3"
-indoc = "1.0"
-sha2 = "0.9.8"
 bytes = "1.1.0"
 clap = "3.0.0-beta.4"
-toml = "0.5.8"
-serde = { version = "1.0.130", features = ["derive"] }
-serde_json = "1.0.78"
-tempfile = "3.2.0"
-reqwest = { version = "0.11", features = ["json"] }
 derivative = "2.2.0"
+env_logger = "0.9.0"
+futures = "0.3.17"
 glob = "0.3.0"
-tokio = { version = "1.16.1", features = ["fs", "process", "time", "io-util", "rt"] }
-tokio-util = "0.6.9"
+hyperx = "1.4.0"
+indoc = "1.0"
+itertools = "0.10.3"
+lazy_static = "1.4.0"
+log = "0.4.14"
+nix = "0.22.1"
+regex = "1"
+reqwest = { version = "0.11", features = ["json"] }
 rusoto_core = "0.47.0"
 rusoto_s3 = "0.47.0"
-hyperx = "1.4.0"
-futures = "0.3.17"
+serde = { version = "1.0.130", features = ["derive"] }
+serde_json = "1.0.78"
+sha2 = "0.9.8"
 shell-words = "1.0.0"
+tempfile = "3.2.0"
+tokio = { version = "1.16.1", features = ["fs", "process", "time", "io-util", "rt"] }
+tokio-util = "0.6.9"
+toml = "0.5.8"
 
 [dev-dependencies]
-serial_test = "0.5.1"
 assert_cmd = "2.0.2"
 rand = "0.8.4"
+serial_test = "0.5.1"
