@@ -2,8 +2,7 @@ use std::ffi::OsString;
 
 use cargo::util::command_prelude::*;
 
-use cargo_capsule::main_exec;
-use cargo_capsule::CargoCapsuleCommand;
+use cargo_capsule::{PackageSpec, CargoCapsuleCommand, add_standard_args, main_exec};
 
 // Implementaiton of the CargoCapsuleCommand trait
 struct CargoCapsuleTest;
@@ -86,7 +85,7 @@ impl CargoCapsuleCommand for CargoCapsuleTest {
     }
 
     // Args should match the ones specified in create_clap_app.
-    fn find_args_to_pass(&self, orig_args: &ArgMatches) -> Vec<OsString> {
+    fn find_args_to_pass(&self, orig_args: &ArgMatches, spec: &PackageSpec) -> Vec<OsString> {
         let mut args = Vec::new();
         // All flag arguments.
         for opt_arg in [
@@ -107,23 +106,7 @@ impl CargoCapsuleCommand for CargoCapsuleTest {
                 args.push(format!("--{}", opt_arg).into());
             }
         }
-        // All single or multiple args.
-        for opt_arg in [
-            "bin",
-            "example",
-            "test",
-            "bench",
-            "features",
-            "target",
-            "target-dir",
-            "manifest-path",
-            "message-format",
-        ] {
-            if orig_args.is_present(opt_arg) {
-                args.push(format!("--{}", opt_arg).into());
-                args.extend(orig_args.values_of(opt_arg).unwrap().map(Into::into));
-            }
-        }
+        add_standard_args(&mut args, &orig_args, &spec);
         // Add TESTNAME
         if let Some(testname) = orig_args.value_of("TESTNAME") {
             args.push(testname.into());

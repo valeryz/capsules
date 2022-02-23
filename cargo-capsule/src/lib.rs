@@ -39,26 +39,71 @@ fn normalize_file(file: &Path, workspace_root: &Option<&str>) -> String {
     }
 }
 
+pub fn add_standard_args(args: &mut Vec<OsString>, orig_args: &ArgMatches, spec: &PackageSpec) {
+    // All single or multiple args, except "bin", "test", "bench".
+    for opt_arg in [
+        "features",
+        "out-dir",
+        "target",
+        "target-dir",
+        "manifest-path",
+        "message-format",
+        "jobs",
+    ] {
+        if orig_args.is_present(opt_arg) {
+            for value in orig_args.values_of(opt_arg).unwrap() {
+                args.push(format!("--{}", opt_arg).into());
+                args.push(value.into());
+            }
+        }
+    }
+
+    // "bin", "test", "bench" are special because we don't want to reuse the same
+    // argument values given, but limit them to the targets present in a specific package.
+    let empty = Vec::new();
+    for opt_arg in ["bin", "test", "bench", "example"] {
+        if orig_args.is_present(opt_arg) {
+            for value in spec.targets.get(opt_arg).unwrap_or(&empty) {
+                args.push(format!("--{}", opt_arg).into());
+                args.push(value.into());
+            }
+        }
+    }
+}
+
+type IoSpec = HashSet<(String, String)>;
+
+// What should we build/test for each package.
+pub struct PackageSpec<'package> {
+    pub io_spec: IoSpec,                              // set of -i and -o flags for capsules.
+    pub targets: HashMap<&'package str, Vec<String>>, // list of targets for each node type (--bin, --test, --bench etc)
+}
+
 pub trait CargoCapsuleCommand {
+    // Name of the command ('build', 'test')
     fn command(&self) -> &'static str;
 
+    // One of the values of the CompileMode enum.
     fn mode(&self) -> CompileMode;
 
+    // Whether this command outputs binaries (e.g. tests don't do this).
     fn binary_outputs(&self) -> bool {
         false
     }
 
+    // Create command line parsing app (with clap crate).
     fn create_clap_app(&self) -> App;
 
-    fn find_args_to_pass(&self, orig_args: &ArgMatches) -> Vec<OsString>;
+    // Find arguments to pass to child cargo calls from curren args.
+    fn find_args_to_pass(&self, orig_args: &ArgMatches, spec: &PackageSpec) -> Vec<OsString>;
 
+    // Parse the dependency graph, and make child calls to cargo under capsule.
     fn exec(&self, config: &mut Config) -> CliResult {
         let app = self.create_clap_app();
         let args = app.get_matches_from_safe(std::env::args_os().skip(1))?;
         let ws = args.workspace(config)?;
         let workspace_root = args.value_of("workspace_root");
 
-        let pass_args = self.find_args_to_pass(&args);
         let capsule_id = args.value_of("capsule_id").expect("Capsule ID unknown");
 
         let mut compile_opts = args.compile_options(config, self.mode(), Some(&ws), ProfileChecking::Custom)?;
@@ -95,12 +140,8 @@ pub trait CargoCapsuleCommand {
             }
         }
 
-        // Now what matters is: output_host, output_targets, export_dir, and roots,
-        // like in CompilationFiles.  But we still have to find 'outputs' somewhere.
-
-        type InputSpec = HashSet<(String, String)>;
-
-        let mut package_inputs = HashMap::<String, InputSpec>::new();
+        // For each package
+        let mut package_specs = HashMap::<String, PackageSpec>::new();
         let empty_deps = Vec::new();
         // Look at each 'root'. For each root, find all its transitive
         // deps, and add it to the package input spec for the package
@@ -118,7 +159,7 @@ pub trait CargoCapsuleCommand {
             // For the transitive deps that are outside the workspace, represent them as tool tags.
             // for the deps that are inside the workspace, find all their sources, and include as -i.
             // Call cargo <test|build> -p 'target' under capsule with all these inputs.
-            let mut inputs: InputSpec = deps
+            let mut io_spec: IoSpec = deps
                 .iter()
                 .flat_map(|dep| -> Result<Vec<(String, String)>> {
                     if dep.is_local() {
@@ -137,18 +178,22 @@ pub trait CargoCapsuleCommand {
                 .flatten()
                 .collect();
 
+            let target_kind = root.target.kind().description(); // "bin", "test", "bench", etc...
+            let mut file_name: Option<String> = None;
             if self.binary_outputs() && matches!(*root.target.kind(), TargetKind::Bin) {
                 let info = bcx.target_data.info(root.kind);
                 let triple = bcx.target_data.short_name(&root.kind);
                 let (file_types, _) = info.rustc_outputs(root.mode, root.target.kind(), triple)?;
                 for file_type in file_types {
                     if file_type.flavor == FileFlavor::Normal {
+                        // This will be run at most once, because there's only one "normal" file in the set.
                         let suffix = file_type.uplift_filename(&root.target);
+                        file_name = Some(suffix.clone());
                         let file_name = match root.kind {
                             CompileKind::Host => output_host.join(suffix),
                             CompileKind::Target(target) => targets.get(&target).expect("given target").join(suffix),
                         };
-                        inputs.insert((
+                        io_spec.insert((
                             "-o".to_string(),
                             normalize_file(file_name.as_path_unlocked(), &workspace_root),
                         ));
@@ -156,23 +201,44 @@ pub trait CargoCapsuleCommand {
                 }
             }
 
-            match package_inputs.entry(root.pkg.name().to_string()) {
-                Entry::Occupied(mut e) => e.get_mut().extend(inputs),
+            let target_spec_present = file_name.is_some() && ["bin", "test", "bench", "example"].contains(&target_kind);
+            // Add the current unit to the package spec for the package of this unit.
+            match package_specs.entry(root.pkg.name().to_string()) {
+                Entry::Occupied(mut e) => {
+                    let package_spec = e.get_mut();
+                    package_spec.io_spec.extend(io_spec);
+                    if target_spec_present {
+                        package_spec
+                            .targets
+                            .entry(target_kind)
+                            .and_modify(|e| e.push(file_name.clone().unwrap()))
+                            .or_insert(vec![file_name.unwrap()]);
+                    }
+                }
                 Entry::Vacant(e) => {
-                    e.insert(inputs);
+                    let mut targets = HashMap::new();
+                    if target_spec_present {
+                        targets.insert(target_kind, vec![file_name.unwrap()]);
+                    }
+                    e.insert(PackageSpec { io_spec, targets });
                 }
             }
         }
 
-        for (package, inputs) in package_inputs {
+        for (package, spec) in package_specs {
             // Modify capsule-id to include a specific root + hash of the args.
             let capsule_id = format!("{}-{}", capsule_id, package);
-            let capsule_args = inputs.iter().flat_map(|(a, b)| [a, b]);
+            let capsule_args = spec.io_spec.iter().flat_map(|(a, b)| [a, b]);
+
+            let pass_args = self.find_args_to_pass(&args, &spec);
 
             debug!(
                 "Inputs for {:?} : {:?}\n\n",
                 package,
-                inputs.iter().map(|(a, b)| format!("{} {}", a, b)).collect::<Vec<_>>()
+                spec.io_spec
+                    .iter()
+                    .map(|(a, b)| format!("{} {}", a, b))
+                    .collect::<Vec<_>>()
             );
 
             // Call 'cargo test' via capsule for the given packged. If
