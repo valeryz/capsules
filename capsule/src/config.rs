@@ -2,7 +2,9 @@ use anyhow::{anyhow, bail, Context, Result};
 use clap::{App, Arg};
 use derivative::Derivative;
 use itertools;
+use lazy_static::lazy_static;
 use log::error;
+use regex::Regex;
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -165,7 +167,7 @@ impl Config {
         }
     }
 
-    pub fn new<I, T>(cmdline_args: I, default_toml: Option<&Path>, current_toml: Option<&Path>) -> Result<Self>
+    pub fn new<I, T>(cmdline_args: I, default_toml: Option<&Path>) -> Result<Self>
     where
         I: IntoIterator<Item = T>,
         T: Into<OsString> + Clone,
@@ -180,14 +182,6 @@ impl Config {
             }
         }
 
-        // Read the main TOML (usually from Capsule.toml in the current directory).
-        let mut dir_config: BTreeMap<String, Config> = BTreeMap::new();
-        if let Some(current_toml) = current_toml {
-            if let Ok(contents) = std::fs::read_to_string(current_toml) {
-                dir_config = toml::from_str::<BTreeMap<String, Config>>(&contents)?;
-            }
-        }
-
         // Read the command line from both os::args and the environment.
         let arg_matches = App::new("capsule")
             .version(env!("CARGO_PKG_VERSION"))
@@ -196,6 +190,14 @@ impl Config {
                     .help("The ID of the capsule (usually a target path)")
                     .short('c')
                     .long("capsule_id")
+                    .takes_value(true)
+                    .multiple_occurrences(false),
+            )
+            .arg(
+                Arg::new("file")
+                    .help("Location of the Capsules.toml file")
+                    .short('f')
+                    .long("file")
                     .takes_value(true)
                     .multiple_occurrences(false),
             )
@@ -274,7 +276,6 @@ impl Config {
             .arg(
                 Arg::new("cache_failure")
                     .help("Use cached failures")
-                    .short('f')
                     .long("cache_failure"),
             )
             .arg(
@@ -406,10 +407,48 @@ impl Config {
             Milestone::BluePill
         };
 
-        // First, we look at .toml files, then we merge in CAPSULE_ARGS and command line.
-        // But, for capsule_id, we must look at command line first, as .toml files might not have
-        // one, and we must choose a section based on capsule_id. Other options could be examined
-        // later.
+        // First pass over command line args to find
+        // 'file', 'capsule_id', and 'workspace_root' arguments.
+        let mut config_file: Option<WorkspacePath> = None;
+        let mut config_section: Option<String> = None;
+        for matches in &match_sources {
+            // 'file' could be a workspace relative path, so figure out the root first.
+            if let Some(value) = matches.value_of("workspace_root") {
+                config.workspace_root = Some(value.into());
+            }
+            if let Some(file) = matches.value_of("file") {
+                lazy_static! {
+                    static ref RE: Regex = Regex::new(r"^([^:]*)(?::([a-zA-Z0-9_]+))?$").unwrap();
+                }
+                let caps = RE.captures(file).ok_or(anyhow!("Invalid --file value"))?;
+                config_file = Some(
+                    caps.get(1)
+                        .ok_or(anyhow!("Invalid --file value: cannot match filename"))
+                        .map(|m| m.as_str())?
+                        .into(),
+                );
+                if let Some(section) = caps.get(2) {
+                    config_section = Some(section.as_str().into());
+                }
+            }
+            if let Some(capsule_id) = matches.value_of("capsule_id") {
+                config.capsule_id = Some(capsule_id.to_owned());
+            } else if matches.is_present("inputs_hash") || matches.is_present("passive") {
+                // For --inputs_hash, or --passive, capsule_id doesn't matter, so let's just silence
+                // the check below.
+                config.capsule_id = Some("-".to_owned());
+            }
+        }
+
+        // Read the main TOML (usually from Capsule.toml in the current directory).
+        let mut dir_config: BTreeMap<String, Config> = BTreeMap::new();
+        if let Some(config_file) = config_file.as_ref() {
+            if let Ok(contents) = std::fs::read_to_string(config_file.to_path(&config.workspace_root)?) {
+                dir_config = toml::from_str::<BTreeMap<String, Config>>(&contents)?;
+            }
+        }
+
+        // Now let's try to find out the capsule_id.
         for matches in &match_sources {
             if let Some(capsule_id) = matches.value_of("capsule_id") {
                 config.capsule_id = Some(capsule_id.to_owned());
@@ -420,7 +459,15 @@ impl Config {
             }
         }
 
-        // If there's only one entry in Capsules.toml, it is implied,
+        // If still no capsule_id, maybe we have a config_section defined? Then we'll use this
+        // as capsule_id.
+        if config.capsule_id.is_none() {
+            if config_section.is_some() {
+                config.capsule_id = config_section.clone();
+            }
+        }
+
+        // Finally, if there's only one entry in Capsules.toml, it is implied,
         // and we don't have to specify the -c flag.
         if config.capsule_id.is_none() {
             if dir_config.len() == 1 {
@@ -430,18 +477,32 @@ impl Config {
             }
         }
 
+        // Here we finally have our capsule ID.
         let capsule_id = config.capsule_id.as_ref().unwrap();
 
-        // Dir_config can have many sections, relating to manu capsules.
-        // We pick the onle related to the current capsule_id.
-        // We call .remove() to take full ownership of the single_config.
-        if let Some(mut single_config) = dir_config.remove(capsule_id) {
-            config.merge(&mut single_config);
+        // If we have a config file, we'll read a section defined by either a given section
+        // in the --file argument, or the capsule ID (including if there just one section,
+        // and it happens to define the capsule ID.
+        let config_section = config_section.as_ref().unwrap_or(capsule_id);
+
+        // Now finally merge the correct section of the config file.
+        if dir_config.len() > 0 {
+            if let Some(mut single_config) = dir_config.remove(config_section) {
+                config.merge(&mut single_config);
+            } else {
+                bail!(
+                    "Cannot find section '{}' in config '{}'",
+                    config_section,
+                    config_file.unwrap()
+                );
+            }
         }
 
+        // Now that we've determined 'workspace_root', 'capsule_id', 'file' arguments,
+        // and have read the config file, we read the rest argument. The command line
+        // values override those of config files, so this has to be done in the end.
         config.backend = Backend::Dummy; // default caching backend.
         for matches in match_sources {
-            config.workspace_root = matches.value_of("workspace_root").map(Into::into);
             if let Some(inputs) = matches.values_of("input") {
                 config.input_files.extend(inputs.map(Into::into));
             }
@@ -600,7 +661,7 @@ mod tests {
     #[serial] // Must serialize these tests so that env vars don't affect other tests.
     fn test_command_line_1() {
         env::set_var("CAPSULE_ARGS", "-c my_capsule -- /bin/echo");
-        let config = Config::new(["capsule"], None, None);
+        let config = Config::new(["capsule"], None);
         env::remove_var("CAPSULE_ARGS");
         let config = config.unwrap();
         assert_eq!(config.capsule_id.unwrap(), "my_capsule");
@@ -611,7 +672,7 @@ mod tests {
     #[serial]
     fn test_capsule_args_with_space() {
         env::set_var("CAPSULE_ARGS", "-c 'my capsule id' -- /bin/echo");
-        let config = Config::new(["capsule"], None, None);
+        let config = Config::new(["capsule"], None);
         env::remove_var("CAPSULE_ARGS");
         let config = config.unwrap();
         assert_eq!(config.capsule_id.unwrap(), "my capsule id");
@@ -625,7 +686,6 @@ mod tests {
         let config = Config::new(
             vec!["capsule", "-c", "my other capsule id", "--", "/bin/echo"],
             None,
-            None,
         );
         env::remove_var("CAPSULE_ARGS");
         let config = config.unwrap();
@@ -635,7 +695,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_command_line_2() {
-        let config = Config::new(vec!["placebo", "-c", "my_capsule", "--", "/bin/echo"], None, None).unwrap();
+        let config = Config::new(vec!["placebo", "-c", "my_capsule", "--", "/bin/echo"], None).unwrap();
         assert_eq!(config.get_honeycomb_kv().unwrap(), vec![]);
         assert_eq!(config.capsule_id.unwrap(), "my_capsule");
         assert_eq!(config.command_to_run[0], "/bin/echo");
@@ -644,7 +704,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_command_line_no_command() {
-        Config::new(vec!["placebo", "-c", "my_capsule"], None, None).unwrap_err();
+        Config::new(vec!["placebo", "-c", "my_capsule"], None).unwrap_err();
     }
 
     #[test]
@@ -661,9 +721,16 @@ mod tests {
         config_file.flush().unwrap();
 
         let config = Config::new(
-            vec!["placebo", "-c", "my_capsule", "--", "/bin/echo"],
+            vec![
+                "placebo",
+                "-c",
+                "my_capsule",
+                "-f",
+                config_file.path().to_str().unwrap(),
+                "--",
+                "/bin/echo",
+            ],
             None,
-            Some(config_file.path()),
         )
         .unwrap();
         assert_eq!(
@@ -688,7 +755,6 @@ mod tests {
         let config = Config::new(
             vec!["placebo", "-c", "my_capsule", "--", "/bin/echo"],
             Some(config_file.path()),
-            None,
         )
         .unwrap();
         assert_eq!(config.capture_stdout, Some(true));
@@ -719,9 +785,16 @@ mod tests {
         current_config_file.flush().unwrap();
 
         let config = Config::new(
-            vec!["placebo", "-c", "my_capsule", "--", "/bin/echo"],
+            vec![
+                "placebo",
+                "-c",
+                "my_capsule",
+                "-f",
+                &format!("{}:my_capsule", current_config_file.path().display()),
+                "--",
+                "/bin/echo",
+            ],
             Some(default_config_file.path()),
-            Some(current_config_file.path()),
         )
         .unwrap();
         assert_eq!(config.capture_stdout, Some(false));
@@ -744,14 +817,18 @@ mod tests {
         current_config_file.flush().unwrap();
 
         let config = Config::new(
-            vec!["placebo", "-c", "my_capsule", "--", "/bin/echo"],
+            vec![
+                "placebo",
+                "-c",
+                "my_capsule",
+                "-f",
+                current_config_file.path().to_str().unwrap(),
+                "--",
+                "/bin/echo",
+            ],
             None,
-            Some(current_config_file.path()),
-        )
-        .unwrap();
-        assert_eq!(config.tool_tags, Vec::<&str>::new());
-        assert_eq!(config.input_files, Vec::<WorkspacePath>::new());
-        assert_eq!(config.output_files, Vec::<WorkspacePath>::new());
+        );
+        assert!(config.is_err());
     }
 
     #[test]
@@ -767,9 +844,14 @@ mod tests {
         current_config_file.flush().unwrap();
 
         let config = Config::new(
-            vec!["placebo", "--", "/bin/echo"],
+            vec![
+                "placebo",
+                "-f",
+                current_config_file.path().to_str().unwrap(),
+                "--",
+                "/bin/echo",
+            ],
             None,
-            Some(current_config_file.path()),
         )
         .unwrap();
         assert_eq!(config.capsule_id, Some(String::from("my_capsule_id")));
@@ -777,7 +859,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn test_missing_canister_id() {
+    fn test_missing_capsule_id() {
         let mut current_config_file = NamedTempFile::new().unwrap();
         // This config has two sections, two capsule_ids. We don't know which one is meant.
         let config_contents: &'static str = indoc! {r#"
@@ -793,9 +875,14 @@ mod tests {
         current_config_file.flush().unwrap();
 
         Config::new(
-            vec!["placebo", "--", "/bin/echo"],
+            vec![
+                "placebo",
+                "-f",
+                current_config_file.path().to_str().unwrap(),
+                "--",
+                "/bin/echo",
+            ],
             None,
-            Some(current_config_file.path()),
         )
         .unwrap_err();
     }
@@ -813,7 +900,6 @@ mod tests {
                 "--",
                 "/bin/echo",
             ],
-            None,
             None,
         )
         .unwrap();
@@ -838,7 +924,6 @@ mod tests {
                 "--",
                 "/bin/echo",
             ],
-            None,
             None,
         )
         .unwrap();
@@ -868,7 +953,6 @@ mod tests {
                 "/bin/echo",
             ],
             None,
-            None,
         )
         .unwrap();
         assert_eq!(
@@ -890,7 +974,6 @@ mod tests {
                 "--",
                 "/bin/echo",
             ],
-            None,
             None,
         )
         .unwrap();
@@ -930,7 +1013,6 @@ mod tests {
                 "--",
                 "/bin/echo",
             ],
-            None,
             None,
         )
         .unwrap();
