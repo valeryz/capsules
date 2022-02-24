@@ -418,7 +418,7 @@ impl Config {
             }
             if let Some(file) = matches.value_of("file") {
                 lazy_static! {
-                    static ref RE: Regex = Regex::new(r"^([^:]*)(?::([a-zA-Z0-9_]+))?$").unwrap();
+                    static ref RE: Regex = Regex::new(r"^([^:]*)(?::([a-zA-Z0-9_-]+))?$").unwrap();
                 }
                 let caps = RE.captures(file).ok_or(anyhow!("Invalid --file value"))?;
                 config_file = Some(
