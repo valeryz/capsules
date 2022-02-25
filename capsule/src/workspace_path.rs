@@ -12,6 +12,17 @@ pub enum WorkspacePath {
     NonWorkspace(PathBuf),
 }
 
+fn normalize_file(file: &Path, workspace_root: &Option<String>) -> PathBuf {
+    if let Some(root) = workspace_root {
+        match file.strip_prefix(root) {
+            Ok(path) => PathBuf::from(format!("//{}", path.display())),
+            Err(_) => file.to_owned(),
+        }
+    } else {
+        file.to_owned()
+    }
+}
+
 impl WorkspacePath {
     pub fn new(path: PathBuf) -> Self {
         if let Some(stripped) = path.to_str().unwrap_or_default().strip_prefix("//") {
@@ -19,6 +30,10 @@ impl WorkspacePath {
         } else {
             Self::NonWorkspace(path)
         }
+    }
+
+    pub fn from_full_path(path: &Path, root: &Option<String>) -> Self {
+        Self::new(normalize_file(path, root))
     }
 
     pub fn to_path(&self, root: &Option<String>) -> Result<PathBuf> {
